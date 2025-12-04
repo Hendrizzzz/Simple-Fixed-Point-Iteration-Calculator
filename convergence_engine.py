@@ -39,12 +39,200 @@ class IterationEngine:
             context['np'] = np
             context['x'] = 0 # Test variable
             
-            # Test if expression is valid
             self.g_str = g_expression
-            # Lambda to evaluate g(x)
             self.g_func = lambda x: eval(g_expression, {"__builtins__": {}}, {**context, 'x': x})
             
-            # Test call
+            self.g_func(float(x0))
+            
+            self.x_current = float(x0)
+            self.history = [(self.x_current, 0)] # Start at (x0, 0)
+            self.step_count = 0
+            self.error = None
+            return True, "Initialization Successful."
+        except Exception as e:
+            return False, f"Error parsing function: {e}"
+
+    def step(self):
+        """
+        Performs one iteration step: x_{n+1} = g(x_n).
+        Returns details for logging and plotting.
+        """
+        if not self.g_func:
+            return None
+
+        x_in = self.x_current
+        try:
+            x_out = self.g_func(x_in)
+        except Exception as e:
+            return {"error": str(e)}
+
+        if x_out != 0:
+            self.error = abs((x_out - x_in) / x_out) * 100
+        else:
+            self.error = 0.0
+
+        p1 = (x_in, x_in) if self.step_count > 0 else (x_in, 0) 
+        
+        prev_pt = self.history[-1]
+        
+        pt_curve = (x_in, x_out)
+        
+        pt_diag = (x_out, x_out)
+        
+        self.history.append(pt_curve)
+        self.history.append(pt_diag)
+        
+        self.x_current = x_out
+        self.step_count += 1
+        
+        return {
+            "step": self.step_count,
+            "x_in": x_in,
+            "x_out": x_out,
+            "error": self.error,
+            "points": [prev_pt, pt_curve, pt_diag]
+        }
+
+    def run_auto(self, tolerance, max_iter):
+        """
+        Runs the iteration automatically until error < tolerance or max_iter reached.
+        Returns a list of step data.
+        """
+        if not self.g_func:
+            return None
+
+        results = []
+        
+        
+        while self.step_count < max_iter:
+            step_data = self.step()
+            if not step_data or "error" in step_data and isinstance(step_data["error"], str):
+                 results.append(step_data)
+                 break
+            
+            results.append(step_data)
+            
+            if step_data["error"] < tolerance:
+                break
+                
+        return results
+
+    def reset(self):
+        self.g_func = None
+        self.x_current = 0.0
+        self.history = []
+        self.step_count = 0
+        self.error = None
+
+
+import tkinter.ttk as ttk
+
+class ConvergenceApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("The Convergence Engine: Fixed Point Iteration")
+        self.geometry("1200x800")
+        self.engine = IterationEngine()
+
+        self.grid_columnconfigure(0, weight=0) # Sidebar (Fixed width)
+        self.grid_columnconfigure(1, weight=1) # Main Content
+        self.grid_rowconfigure(0, weight=1)
+
+        self.sidebar = ctk.CTkFrame(self, width=300, corner_radius=0)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        
+        self.init_sidebar()
+
+        self.tabview = ctk.CTkTabview(self, fg_color="transparent")
+        self.tabview.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        
+        self.tab_graph = self.tabview.add("Visualization")
+        self.tab_table = self.tabview.add("Data Table")
+        
+        self.init_graph_tab()
+        self.init_table_tab()
+
+    def init_sidebar(self):
+        self.sidebar.grid_rowconfigure(10, weight=1) # Push log to bottom if needed, or just let it expand
+
+        lbl_title = ctk.CTkLabel(self.sidebar, text="CONFIGURATION", font=("Roboto", 20, "bold"))
+        lbl_title.pack(padx=20, pady=(20, 10), anchor="w")
+
+        self.frame_inputs = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.frame_inputs.pack(padx=20, pady=10, fill="x")
+        
+        ctk.CTkLabel(self.frame_inputs, text="Function g(x):", font=("Roboto", 14)).pack(anchor="w")
+        self.entry_g = ctk.CTkEntry(self.frame_inputs, placeholder_text="e.g., np.cos(x)")
+        self.entry_g.pack(fill="x", pady=(0, 10))
+        
+        ctk.CTkLabel(self.frame_inputs, text="Initial Guess x0:", font=("Roboto", 14)).pack(anchor="w")
+        self.entry_x0 = ctk.CTkEntry(self.frame_inputs, placeholder_text="e.g., 0.5")
+        self.entry_x0.pack(fill="x", pady=(0, 10))
+
+        ctk.CTkLabel(self.frame_inputs, text="Tolerance:", font=("Roboto", 14)).pack(anchor="w")
+        self.entry_tol = ctk.CTkEntry(self.frame_inputs, placeholder_text="e.g., 0.0001")
+        self.entry_tol.insert(0, "0.0001")
+        self.entry_tol.pack(fill="x", pady=(0, 10))
+
+        ctk.CTkLabel(self.frame_inputs, text="Max Iterations:", font=("Roboto", 14)).pack(anchor="w")
+        self.entry_max_iter = ctk.CTkEntry(self.frame_inputs, placeholder_text="e.g., 100")
+        self.entry_max_iter.insert(0, "100")
+        self.entry_max_iter.pack(fill="x", pady=(0, 10))
+
+        self.frame_buttons = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.frame_buttons.pack(padx=20, pady=10, fill="x")
+        
+        self.btn_init = ctk.CTkButton(self.frame_buttons, text="INITIALIZE", command=self.on_initialize, fg_color=COLOR_ACCENT)
+        self.btn_init.pack(fill="x", pady=5)
+        
+        self.btn_step = ctk.CTkButton(self.frame_buttons, text="NEXT STEP", command=self.on_step, state="disabled")
+        self.btn_step.pack(fill="x", pady=5)
+
+import customtkinter as ctk
+import tkinter as tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.figure import Figure
+import numpy as np
+import matplotlib.pyplot as plt
+
+ctk.set_appearance_mode("Dark")
+ctk.set_default_color_theme("dark-blue")
+
+plt.style.use('dark_background')
+
+COLOR_BG = "#1a1a1a"  # Dark Grey/Black
+COLOR_ACCENT = "#1f6aa5" # CTK Blue
+COLOR_TEXT = "#ffffff"
+COLOR_PLOT_BG = "#2b2b2b"
+COLOR_LINE_Y_X = "#00ff00" # Green
+COLOR_LINE_G_X = "#00ffff" # Cyan
+COLOR_COBWEB = "#ffff00" # Yellow
+
+class IterationEngine:
+    """
+    Handles the mathematical logic and state of the Fixed Point Iteration.
+    """
+    def __init__(self):
+        self.g_func = None
+        self.g_str = ""
+        self.x_current = 0.0
+        self.history = [] 
+        self.step_count = 0
+        self.error = None
+
+    def initialize(self, g_expression, x0):
+        """
+        Parses the function and sets initial state.
+        """
+        try:
+            context = {k: v for k, v in np.__dict__.items() if callable(v) or isinstance(v, (int, float, np.number))}
+            context['np'] = np
+            context['x'] = 0 # Test variable
+            
+            self.g_str = g_expression
+            self.g_func = lambda x: eval(g_expression, {"__builtins__": {}}, {**context, 'x': x})
+            
             self.g_func(float(x0))
             
             self.x_current = float(x0)
@@ -198,6 +386,19 @@ class ConvergenceApp(ctk.CTk):
         self.btn_reset = ctk.CTkButton(self.frame_buttons, text="RESET", command=self.on_reset, fg_color="#c0392b", hover_color="#e74c3c")
         self.btn_reset.pack(fill="x", pady=5)
 
+        # --- Result HUD ---
+        self.frame_hud = ctk.CTkFrame(self.sidebar, fg_color="#2b2b2b", corner_radius=10)
+        self.frame_hud.pack(padx=20, pady=20, fill="x")
+        
+        ctk.CTkLabel(self.frame_hud, text="CURRENT VALUE", font=("Roboto", 12, "bold"), text_color="#aaaaaa").pack(pady=(10, 0))
+        self.lbl_x_val = ctk.CTkLabel(self.frame_hud, text="---", font=("Consolas", 24, "bold"), text_color=COLOR_ACCENT)
+        self.lbl_x_val.pack(pady=(0, 5))
+        
+        ctk.CTkLabel(self.frame_hud, text="RELATIVE ERROR", font=("Roboto", 12, "bold"), text_color="#aaaaaa").pack(pady=(5, 0))
+        self.lbl_error_val = ctk.CTkLabel(self.frame_hud, text="---", font=("Consolas", 18), text_color="#e74c3c")
+        self.lbl_error_val.pack(pady=(0, 10))
+        # ------------------
+
         ctk.CTkLabel(self.sidebar, text="System Log", font=("Roboto", 14, "bold")).pack(padx=20, pady=(20, 0), anchor="w")
         self.log_box = ctk.CTkTextbox(self.sidebar, font=("Consolas", 12), height=200)
         self.log_box.pack(padx=20, pady=(5, 20), fill="both", expand=True)
@@ -225,6 +426,11 @@ class ConvergenceApp(ctk.CTk):
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.tab_graph)
         self.toolbar.update()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
+        
+        # Annotation for graph
+        self.annot = self.ax.text(0.05, 0.95, "", transform=self.ax.transAxes, 
+                                  color="white", fontsize=10, verticalalignment='top',
+                                  bbox=dict(boxstyle="round", facecolor="#1a1a1a", alpha=0.7))
 
     def init_table_tab(self):
         self.tab_table.grid_columnconfigure(0, weight=1)
@@ -256,6 +462,9 @@ class ConvergenceApp(ctk.CTk):
         self.tree.column("x_next", width=150, anchor="center")
         self.tree.column("error", width=150, anchor="center")
 
+        # Tag for highlighting
+        self.tree.tag_configure('final', background='#2ecc71', foreground='black')
+
         scrollbar = ttk.Scrollbar(self.tab_table, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         
@@ -267,6 +476,13 @@ class ConvergenceApp(ctk.CTk):
         self.log_box.insert("end", message + "\n")
         self.log_box.see("end")
         self.log_box.configure(state="disabled")
+
+    def update_hud(self, x_val, error_val):
+        self.lbl_x_val.configure(text=f"{x_val:.6f}")
+        if error_val is not None:
+            self.lbl_error_val.configure(text=f"{error_val:.6f}%")
+        else:
+            self.lbl_error_val.configure(text="---")
 
     def on_initialize(self):
         g_str = self.entry_g.get()
@@ -288,6 +504,7 @@ class ConvergenceApp(ctk.CTk):
             self.btn_step.configure(state="normal")
             self.btn_auto.configure(state="normal")
             
+            self.update_hud(self.engine.x_current, None)
             self.plot_base_functions()
             
             self.tabview.set("Visualization")
@@ -317,6 +534,9 @@ class ConvergenceApp(ctk.CTk):
         self.canvas.draw()
         
         self.ax.plot(x0, 0, 'o', color='white', markersize=4)
+        
+        # Re-add annotation
+        self.annot.set_text(f"Start: {x0}")
         self.canvas.draw()
 
     def on_step(self):
@@ -336,6 +556,8 @@ class ConvergenceApp(ctk.CTk):
         self.log(f"[STEP {step_num}] x: {x_in:.4f} -> g(x): {x_out:.4f}")
         self.log(f"         Error: {err:.4f}%")
         
+        self.update_hud(x_out, err)
+        
         # Draw Cobweb
         points = result["points"]
         xs = [p[0] for p in points]
@@ -343,6 +565,10 @@ class ConvergenceApp(ctk.CTk):
         
         self.ax.plot(xs, ys, color=COLOR_COBWEB, linewidth=1, alpha=0.8)
         self.ax.plot(x_out, x_out, 'o', color=COLOR_COBWEB, markersize=3)
+        
+        # Update Annotation
+        self.annot.set_text(f"Step: {step_num}\nx: {x_out:.4f}\nErr: {err:.4f}%")
+        
         self.canvas.draw()
 
     def on_run_auto(self):
@@ -366,20 +592,26 @@ class ConvergenceApp(ctk.CTk):
         for item in self.tree.get_children():
             self.tree.delete(item)
             
-        for res in results:
+        for i, res in enumerate(results):
             if "error" in res and isinstance(res["error"], str):
                 self.log(f"[AUTO ERROR] {res['error']}")
                 break
+            
+            # Highlight last row
+            tags = ()
+            if i == len(results) - 1:
+                tags = ('final',)
                 
             self.tree.insert("", "end", values=(
                 res["step"],
                 f"{res['x_in']:.6f}",
-                f"{res['x_next'] if 'x_next' in res else res['x_out']:.6f}", # Handle key name mismatch if any
+                f"{res['x_next'] if 'x_next' in res else res['x_out']:.6f}", 
                 f"{res['error']:.6f}"
-            ))
+            ), tags=tags)
             
         last_res = results[-1]
         self.log(f"[AUTO] Finished at Step {last_res['step']}. Final Error: {last_res['error']:.6f}%")
+        self.update_hud(last_res['x_out'], last_res['error'])
 
     def on_reset(self):
         self.engine.reset()
@@ -401,6 +633,9 @@ class ConvergenceApp(ctk.CTk):
         
         for item in self.tree.get_children():
             self.tree.delete(item)
+            
+        self.lbl_x_val.configure(text="---")
+        self.lbl_error_val.configure(text="---")
 
 if __name__ == "__main__":
     app = ConvergenceApp()
