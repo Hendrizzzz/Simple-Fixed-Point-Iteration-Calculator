@@ -10,10 +10,12 @@ A high-fidelity, interactive educational application for visualizing the Fixed P
 *   **Dynamic Configuration**:
     *   Input any valid Python mathematical expression for $g(x)$ (e.g., `np.cos(x)`, `2.8*x*(1-x)`).
     *   Set Initial Guess ($x_0$).
-*   **Modern UI**:
-    *   Sleek Dark/Sci-Fi theme using `customtkinter`.
-    *   Real-time system logging.
-    *   Responsive layout with Sidebar and Tabs.
+    *   **Decimal Precision**: Selectable display precision from 0 to 20 decimal places.
+*   **Modern UI & UX**:
+    *   **Result HUD**: Real-time display of Current Value and Relative Error with a "TOLERANCE MET" indicator.
+    *   **Interactive Graph**: Zoom, Pan, and Save plots using the integrated toolbar.
+    *   **Data Table**: Comprehensive history starting from Iteration 0, with row highlighting for the final result.
+    *   **Sleek Design**: Dark/Sci-Fi theme using `customtkinter`.
 
 ## Installation & Setup
 
@@ -73,17 +75,20 @@ python convergence_engine.py
 1.  **Configuration (Sidebar)**:
     *   **Function g(x)**: Enter your iteration function. Use `np` for NumPy functions (e.g., `np.cos(x)`, `np.exp(-x)`).
     *   **Initial Guess x0**: Enter the starting value.
-    *   **Tolerance**: (For Auto Mode) Stop when relative error is below this value (default `0.0001`).
+    *   **Tolerance**: (For Auto Mode & Indicator) Stop/Notify when relative error is below this value (default `0.0001`).
     *   **Max Iterations**: (For Auto Mode) Stop after this many steps (default `100`).
+    *   **Decimal Places**: Adjust the number of decimal places shown in the UI (0-20).
 
 2.  **Visualization Mode**:
     *   Click **INITIALIZE** to prepare the graph.
-    *   Click **NEXT STEP** repeatedly to see the cobweb plot form step-by-step.
+    *   Click **NEXT ITERATION** repeatedly to see the cobweb plot form step-by-step.
+    *   Watch the **Result HUD** for the "TOLERANCE MET" indicator.
     *   Use the **Toolbar** below the graph to Zoom or Pan.
 
 3.  **Automatic Mode**:
     *   Click **RUN AUTO** to calculate the entire sequence instantly.
     *   The app will switch to the **Data Table** tab to show the results.
+    *   The final result will be highlighted in the table.
 
 4.  **Reset**:
     *   Click **RESET** to clear all data and start over with a new function.
