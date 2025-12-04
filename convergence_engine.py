@@ -404,6 +404,9 @@ class ConvergenceApp(ctk.CTk):
         ctk.CTkLabel(self.frame_hud, text="RELATIVE ERROR", font=("Roboto", 12, "bold"), text_color="#aaaaaa").pack(pady=(5, 0))
         self.lbl_error_val = ctk.CTkLabel(self.frame_hud, text="---", font=("Consolas", 18), text_color="#e74c3c")
         self.lbl_error_val.pack(pady=(0, 10))
+        
+        self.lbl_tolerance_met = ctk.CTkLabel(self.frame_hud, text="TOLERANCE MET", font=("Roboto", 12, "bold"), text_color="#2ecc71")
+        # Don't pack it initially, only show when met
         # ------------------
 
         # Status Label instead of Log
@@ -495,8 +498,19 @@ class ConvergenceApp(ctk.CTk):
         self.lbl_x_val.configure(text=f"{x_val:.{prec}f}")
         if error_val is not None:
             self.lbl_error_val.configure(text=f"{error_val:.{prec}f}%")
+            
+            # Check tolerance
+            try:
+                tol = float(self.entry_tol.get())
+                if error_val < tol:
+                    self.lbl_tolerance_met.pack(pady=(0, 10))
+                else:
+                    self.lbl_tolerance_met.pack_forget()
+            except ValueError:
+                self.lbl_tolerance_met.pack_forget()
         else:
             self.lbl_error_val.configure(text="---")
+            self.lbl_tolerance_met.pack_forget()
 
     def update_table(self):
         # Clear existing table
