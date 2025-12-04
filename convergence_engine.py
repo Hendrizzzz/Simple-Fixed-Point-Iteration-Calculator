@@ -25,7 +25,7 @@ class IterationEngine:
     def __init__(self):
         self.g_func = None
         self.g_str = ""
-        self.x_current = 0.0
+        self.previous_x = 0.0
         self.history = [] 
         self.step_count = 0
         self.error = None
@@ -44,8 +44,8 @@ class IterationEngine:
             
             self.g_func(float(x0))
             
-            self.x_current = float(x0)
-            self.history = [(self.x_current, 0)] # Start at (x0, 0)
+            self.previous_x = float(x0)
+            self.history = [(self.previous_x, 0)] # Start at (x0, 0)
             self.step_count = 0
             self.error = None
             return True, "Initialization Successful."
@@ -60,7 +60,7 @@ class IterationEngine:
         if not self.g_func:
             return None
 
-        x_in = self.x_current
+        x_in = self.previous_x
         try:
             x_out = self.g_func(x_in)
         except Exception as e:
@@ -82,7 +82,7 @@ class IterationEngine:
         self.history.append(pt_curve)
         self.history.append(pt_diag)
         
-        self.x_current = x_out
+        self.previous_x = x_out
         self.step_count += 1
         
         return {
@@ -119,7 +119,7 @@ class IterationEngine:
 
     def reset(self):
         self.g_func = None
-        self.x_current = 0.0
+        self.previous_x = 0.0
         self.history = []
         self.step_count = 0
         self.error = None
@@ -216,7 +216,7 @@ class IterationEngine:
     def __init__(self):
         self.g_func = None
         self.g_str = ""
-        self.x_current = 0.0
+        self.previous_x = 0.0
         self.history = [] 
         self.step_count = 0
         self.error = None
@@ -235,8 +235,8 @@ class IterationEngine:
             
             self.g_func(float(x0))
             
-            self.x_current = float(x0)
-            self.history = [(self.x_current, 0)] # Start at (x0, 0)
+            self.previous_x = float(x0)
+            self.history = [(self.previous_x, 0)] # Start at (x0, 0)
             self.step_count = 0
             self.error = None
             return True, "Initialization Successful."
@@ -251,7 +251,7 @@ class IterationEngine:
         if not self.g_func:
             return None
 
-        x_in = self.x_current
+        x_in = self.previous_x
         try:
             x_out = self.g_func(x_in)
         except Exception as e:
@@ -273,7 +273,7 @@ class IterationEngine:
         self.history.append(pt_curve)
         self.history.append(pt_diag)
         
-        self.x_current = x_out
+        self.previous_x = x_out
         self.step_count += 1
         
         return {
@@ -310,7 +310,7 @@ class IterationEngine:
 
     def reset(self):
         self.g_func = None
-        self.x_current = 0.0
+        self.previous_x = 0.0
         self.history = []
         self.step_count = 0
         self.error = None
@@ -374,7 +374,7 @@ class ConvergenceApp(ctk.CTk):
 
         # Decimal Places Selector
         ctk.CTkLabel(self.frame_inputs, text="Decimal Places:", font=("Roboto", 14)).pack(anchor="w")
-        self.combo_decimals = ctk.CTkComboBox(self.frame_inputs, values=["5", "6", "7", "8", "9"])
+        self.combo_decimals = ctk.CTkComboBox(self.frame_inputs, values=[str(i) for i in range(21)])
         self.combo_decimals.set("6")
         self.combo_decimals.pack(fill="x", pady=(0, 10))
 
@@ -384,7 +384,7 @@ class ConvergenceApp(ctk.CTk):
         self.btn_init = ctk.CTkButton(self.frame_buttons, text="INITIALIZE", command=self.on_initialize, fg_color=COLOR_ACCENT)
         self.btn_init.pack(fill="x", pady=5)
         
-        self.btn_step = ctk.CTkButton(self.frame_buttons, text="NEXT STEP", command=self.on_step, state="disabled")
+        self.btn_step = ctk.CTkButton(self.frame_buttons, text="NEXT ITERATION", command=self.on_step, state="disabled")
         self.btn_step.pack(fill="x", pady=5)
 
         self.btn_auto = ctk.CTkButton(self.frame_buttons, text="RUN AUTO", command=self.on_run_auto, state="disabled", fg_color="#2ecc71", hover_color="#27ae60")
@@ -425,6 +425,10 @@ class ConvergenceApp(ctk.CTk):
         
         self.ax.grid(True, linestyle='--', alpha=0.3)
         
+        # Persistent Step Counter Label
+        self.lbl_step_counter = ctk.CTkLabel(self.tab_graph, text="Iteration: 0", font=("Roboto", 16, "bold"))
+        self.lbl_step_counter.pack(pady=(5, 0))
+
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.tab_graph)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
@@ -455,17 +459,17 @@ class ConvergenceApp(ctk.CTk):
                         font=("Roboto", 10, "bold"))
         style.map("Treeview", background=[('selected', COLOR_ACCENT)])
 
-        columns = ("step", "x_current", "x_next", "error")
+        columns = ("step", "previous_x", "current_x", "error")
         self.tree = ttk.Treeview(self.tab_table, columns=columns, show="headings", selectmode="browse")
         
-        self.tree.heading("step", text="Step")
-        self.tree.heading("x_current", text="Current X")
-        self.tree.heading("x_next", text="Next X")
+        self.tree.heading("step", text="Iteration")
+        self.tree.heading("previous_x", text="Previous X")
+        self.tree.heading("current_x", text="Current X")
         self.tree.heading("error", text="Error (%)")
         
         self.tree.column("step", width=50, anchor="center")
-        self.tree.column("x_current", width=150, anchor="center")
-        self.tree.column("x_next", width=150, anchor="center")
+        self.tree.column("previous_x", width=150, anchor="center")
+        self.tree.column("current_x", width=150, anchor="center")
         self.tree.column("error", width=150, anchor="center")
 
         # Tag for highlighting
@@ -510,7 +514,7 @@ class ConvergenceApp(ctk.CTk):
             self.tree.insert("", "end", values=(
                 res["step"],
                 f"{res['x_in']:.{prec}f}",
-                f"{res['x_next'] if 'x_next' in res else res['x_out']:.{prec}f}", 
+                f"{res['current_x'] if 'current_x' in res else res['x_out']:.{prec}f}", 
                 f"{res['error']:.{prec}f}"
             ), tags=tags)
 
@@ -532,8 +536,16 @@ class ConvergenceApp(ctk.CTk):
             self.btn_step.configure(state="normal")
             self.btn_auto.configure(state="normal")
             
-            self.step_data_history = [] # Reset history
-            self.update_hud(self.engine.x_current, None)
+            # Initialize history with Iteration 0
+            self.step_data_history = [{
+                "step": 0,
+                "x_in": self.engine.previous_x,
+                "x_out": self.engine.previous_x, # Initial state
+                "error": 0.0
+            }]
+            
+            self.update_hud(self.engine.previous_x, None)
+            self.lbl_step_counter.configure(text="Iteration: 0") # Reset step counter
             self.update_table()
             self.plot_base_functions()
             
@@ -546,7 +558,7 @@ class ConvergenceApp(ctk.CTk):
         self.ax.grid(True, linestyle='--', alpha=0.3)
         self.ax.set_title(f"Fixed Point Iteration: x = {self.engine.g_str}", color=COLOR_TEXT)
         
-        x0 = self.engine.x_current
+        x0 = self.engine.previous_x
         span = 5
         x_min, x_max = x0 - span, x0 + span
         
@@ -587,6 +599,7 @@ class ConvergenceApp(ctk.CTk):
         
         self.step_data_history.append(result)
         self.update_hud(x_out, err)
+        self.lbl_step_counter.configure(text=f"Iteration: {step_num}") # Update step counter
         self.update_table()
         
         # Draw Cobweb
@@ -599,7 +612,7 @@ class ConvergenceApp(ctk.CTk):
         
         # Update Annotation
         prec = self.get_precision()
-        self.annot.set_text(f"Step: {step_num}\nx: {x_out:.{prec}f}\nErr: {err:.{prec}f}%")
+        self.annot.set_text(f"Iter: {step_num}\nx: {x_out:.{prec}f}\nErr: {err:.{prec}f}%")
         
         self.canvas.draw()
 
@@ -624,7 +637,8 @@ class ConvergenceApp(ctk.CTk):
         
         last_res = results[-1]
         self.update_hud(last_res['x_out'], last_res['error'])
-        self.set_status(f"Finished at Step {last_res['step']}.")
+        self.lbl_step_counter.configure(text=f"Iteration: {last_res['step']}") # Update step counter
+        self.set_status(f"Finished at Iteration {last_res['step']}.")
         
         # Also update graph with all new points
         for res in results:
@@ -653,6 +667,7 @@ class ConvergenceApp(ctk.CTk):
         self.ax.grid(True, linestyle='--', alpha=0.3)
         self.canvas.draw()
         
+        self.lbl_step_counter.configure(text="Iteration: 0") # Reset step counter
         self.update_table()
             
         self.lbl_x_val.configure(text="---")
