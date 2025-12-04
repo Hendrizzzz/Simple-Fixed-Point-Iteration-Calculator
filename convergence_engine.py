@@ -5,14 +5,11 @@ from matplotlib.figure import Figure
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- Configuration & Theme ---
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")
 
-# Matplotlib Dark Theme
 plt.style.use('dark_background')
 
-# Colors
 COLOR_BG = "#1a1a1a"  # Dark Grey/Black
 COLOR_ACCENT = "#1f6aa5" # CTK Blue
 COLOR_TEXT = "#ffffff"
@@ -29,7 +26,7 @@ class IterationEngine:
         self.g_func = None
         self.g_str = ""
         self.x_current = 0.0
-        self.history = [] # List of (x, y) tuples for plotting
+        self.history = [] 
         self.step_count = 0
         self.error = None
 
@@ -38,14 +35,14 @@ class IterationEngine:
         Parses the function and sets initial state.
         """
         try:
-            # Create a safe context for eval, including numpy functions
             context = {k: v for k, v in np.__dict__.items() if callable(v) or isinstance(v, (int, float, np.number))}
+            context['np'] = np
             context['x'] = 0 # Test variable
             
             # Test if expression is valid
             self.g_str = g_expression
             # Lambda to evaluate g(x)
-            self.g_func = lambda x: eval(g_expression, {"__builtins__": None}, context | {'x': x})
+            self.g_func = lambda x: eval(g_expression, {"__builtins__": {}}, {**context, 'x': x})
             
             # Test call
             self.g_func(float(x0))
@@ -72,36 +69,17 @@ class IterationEngine:
         except Exception as e:
             return {"error": str(e)}
 
-        # Calculate Error (Relative Approximate Error)
         if x_out != 0:
             self.error = abs((x_out - x_in) / x_out) * 100
         else:
             self.error = 0.0
 
-        # Update State
-        # Cobweb path: (x_in, 0) -> (x_in, x_out) -> (x_out, x_out)
-        # But we already have (x_in, 0) or (x_in, x_in) from previous step.
-        # Let's define the segments to draw for this step.
-        
-        # Segment 1: Vertical from x_in to curve g(x)
         p1 = (x_in, x_in) if self.step_count > 0 else (x_in, 0) 
-        # Actually, standard cobweb usually keeps y=x as reference.
-        # If we are at x_in, we are effectively at (x_in, x_in) on the diagonal (or (x_in, 0) for start).
-        # We go VERTICALLY to (x_in, g(x_in)).
-        
-        # Segment 2: Horizontally to y=x line
-        # From (x_in, g(x_in)) to (g(x_in), g(x_in))
-        
-        # Wait, if we start at (x0, 0), first move is to (x0, g(x0)).
-        # Then we move to (g(x0), g(x0)).
-        # This (g(x0), g(x0)) is the new point on diagonal, representing x1.
         
         prev_pt = self.history[-1]
         
-        # Vertical move
         pt_curve = (x_in, x_out)
         
-        # Horizontal move
         pt_diag = (x_out, x_out)
         
         self.history.append(pt_curve)
@@ -128,9 +106,6 @@ class IterationEngine:
 
         results = []
         
-        # If we haven't started, do the first step? 
-        # Or just continue from where we are?
-        # Let's assume we continue from current state.
         
         while self.step_count < max_iter:
             step_data = self.step()
@@ -163,18 +138,15 @@ class ConvergenceApp(ctk.CTk):
         self.geometry("1200x800")
         self.engine = IterationEngine()
 
-        # Grid Layout Configuration
         self.grid_columnconfigure(0, weight=0) # Sidebar (Fixed width)
         self.grid_columnconfigure(1, weight=1) # Main Content
         self.grid_rowconfigure(0, weight=1)
 
-        # --- Left Side: Sidebar (Configuration) ---
         self.sidebar = ctk.CTkFrame(self, width=300, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
         self.init_sidebar()
 
-        # --- Right Side: Main Content (Tabs) ---
         self.tabview = ctk.CTkTabview(self, fg_color="transparent")
         self.tabview.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         
@@ -187,37 +159,30 @@ class ConvergenceApp(ctk.CTk):
     def init_sidebar(self):
         self.sidebar.grid_rowconfigure(10, weight=1) # Push log to bottom if needed, or just let it expand
 
-        # Header
         lbl_title = ctk.CTkLabel(self.sidebar, text="CONFIGURATION", font=("Roboto", 20, "bold"))
         lbl_title.pack(padx=20, pady=(20, 10), anchor="w")
 
-        # 1. Inputs
         self.frame_inputs = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.frame_inputs.pack(padx=20, pady=10, fill="x")
         
-        # Function g(x)
         ctk.CTkLabel(self.frame_inputs, text="Function g(x):", font=("Roboto", 14)).pack(anchor="w")
         self.entry_g = ctk.CTkEntry(self.frame_inputs, placeholder_text="e.g., np.cos(x)")
         self.entry_g.pack(fill="x", pady=(0, 10))
         
-        # Initial Guess x0
         ctk.CTkLabel(self.frame_inputs, text="Initial Guess x0:", font=("Roboto", 14)).pack(anchor="w")
         self.entry_x0 = ctk.CTkEntry(self.frame_inputs, placeholder_text="e.g., 0.5")
         self.entry_x0.pack(fill="x", pady=(0, 10))
 
-        # Tolerance
         ctk.CTkLabel(self.frame_inputs, text="Tolerance:", font=("Roboto", 14)).pack(anchor="w")
         self.entry_tol = ctk.CTkEntry(self.frame_inputs, placeholder_text="e.g., 0.0001")
         self.entry_tol.insert(0, "0.0001")
         self.entry_tol.pack(fill="x", pady=(0, 10))
 
-        # Max Iterations
         ctk.CTkLabel(self.frame_inputs, text="Max Iterations:", font=("Roboto", 14)).pack(anchor="w")
         self.entry_max_iter = ctk.CTkEntry(self.frame_inputs, placeholder_text="e.g., 100")
         self.entry_max_iter.insert(0, "100")
         self.entry_max_iter.pack(fill="x", pady=(0, 10))
 
-        # 2. Control Deck
         self.frame_buttons = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.frame_buttons.pack(padx=20, pady=10, fill="x")
         
@@ -233,7 +198,6 @@ class ConvergenceApp(ctk.CTk):
         self.btn_reset = ctk.CTkButton(self.frame_buttons, text="RESET", command=self.on_reset, fg_color="#c0392b", hover_color="#e74c3c")
         self.btn_reset.pack(fill="x", pady=5)
 
-        # 3. System Log
         ctk.CTkLabel(self.sidebar, text="System Log", font=("Roboto", 14, "bold")).pack(padx=20, pady=(20, 0), anchor="w")
         self.log_box = ctk.CTkTextbox(self.sidebar, font=("Consolas", 12), height=200)
         self.log_box.pack(padx=20, pady=(5, 20), fill="both", expand=True)
@@ -243,7 +207,6 @@ class ConvergenceApp(ctk.CTk):
         self.tab_graph.grid_columnconfigure(0, weight=1)
         self.tab_graph.grid_rowconfigure(0, weight=1)
 
-        # Create Figure
         self.fig = Figure(figsize=(5, 5), dpi=100, facecolor=COLOR_PLOT_BG)
         self.ax = self.fig.add_subplot(111)
         self.ax.set_facecolor(COLOR_PLOT_BG)
@@ -253,14 +216,12 @@ class ConvergenceApp(ctk.CTk):
         self.ax.tick_params(axis='x', colors=COLOR_TEXT)
         self.ax.tick_params(axis='y', colors=COLOR_TEXT)
         
-        # Initial empty plot
         self.ax.grid(True, linestyle='--', alpha=0.3)
         
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.tab_graph)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
 
-        # Toolbar
         self.toolbar = NavigationToolbar2Tk(self.canvas, self.tab_graph)
         self.toolbar.update()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
@@ -269,7 +230,6 @@ class ConvergenceApp(ctk.CTk):
         self.tab_table.grid_columnconfigure(0, weight=1)
         self.tab_table.grid_rowconfigure(0, weight=1)
 
-        # Treeview Style
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Treeview", 
@@ -283,7 +243,6 @@ class ConvergenceApp(ctk.CTk):
                         font=("Roboto", 10, "bold"))
         style.map("Treeview", background=[('selected', COLOR_ACCENT)])
 
-        # Treeview
         columns = ("step", "x_current", "x_next", "error")
         self.tree = ttk.Treeview(self.tab_table, columns=columns, show="headings", selectmode="browse")
         
@@ -297,7 +256,6 @@ class ConvergenceApp(ctk.CTk):
         self.tree.column("x_next", width=150, anchor="center")
         self.tree.column("error", width=150, anchor="center")
 
-        # Scrollbar
         scrollbar = ttk.Scrollbar(self.tab_table, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         
@@ -332,7 +290,6 @@ class ConvergenceApp(ctk.CTk):
             
             self.plot_base_functions()
             
-            # Switch to graph tab initially
             self.tabview.set("Visualization")
         else:
             self.log(f"[ERROR] {msg}")
@@ -343,18 +300,13 @@ class ConvergenceApp(ctk.CTk):
         self.ax.set_title(f"Fixed Point Iteration: x = {self.engine.g_str}", color=COLOR_TEXT)
         
         x0 = self.engine.x_current
-        # Dynamic range based on x0?
-        # Let's try to be smart. If x0 is 100, range [-2, 2] is bad.
-        # Let's do [x0 - 5, x0 + 5] roughly.
         span = 5
         x_min, x_max = x0 - span, x0 + span
         
         x_vals = np.linspace(x_min, x_max, 400)
         
-        # Plot y = x
         self.ax.plot(x_vals, x_vals, color=COLOR_LINE_Y_X, label="y = x", linewidth=1.5)
         
-        # Plot y = g(x)
         try:
             y_vals = [self.engine.g_func(x) for x in x_vals]
             self.ax.plot(x_vals, y_vals, color=COLOR_LINE_G_X, label=f"y = {self.engine.g_str}", linewidth=1.5)
@@ -364,7 +316,6 @@ class ConvergenceApp(ctk.CTk):
         self.ax.legend()
         self.canvas.draw()
         
-        # Plot initial point
         self.ax.plot(x0, 0, 'o', color='white', markersize=4)
         self.canvas.draw()
 
@@ -410,14 +361,11 @@ class ConvergenceApp(ctk.CTk):
             self.log("[AUTO] No results generated.")
             return
 
-        # Switch to Table Tab
         self.tabview.set("Data Table")
         
-        # Clear existing table
         for item in self.tree.get_children():
             self.tree.delete(item)
             
-        # Populate Table
         for res in results:
             if "error" in res and isinstance(res["error"], str):
                 self.log(f"[AUTO ERROR] {res['error']}")
