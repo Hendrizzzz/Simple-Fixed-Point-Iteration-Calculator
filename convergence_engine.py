@@ -325,6 +325,7 @@ class ConvergenceApp(ctk.CTk):
         self.title("The Convergence Engine: Fixed Point Iteration")
         self.geometry("1200x800")
         self.engine = IterationEngine()
+        self.step_data_history = [] # Keep track of all steps for table
 
         self.grid_columnconfigure(0, weight=0) # Sidebar (Fixed width)
         self.grid_columnconfigure(1, weight=1) # Main Content
@@ -371,6 +372,12 @@ class ConvergenceApp(ctk.CTk):
         self.entry_max_iter.insert(0, "100")
         self.entry_max_iter.pack(fill="x", pady=(0, 10))
 
+        # Decimal Places Selector
+        ctk.CTkLabel(self.frame_inputs, text="Decimal Places:", font=("Roboto", 14)).pack(anchor="w")
+        self.combo_decimals = ctk.CTkComboBox(self.frame_inputs, values=["5", "6", "7", "8", "9"])
+        self.combo_decimals.set("6")
+        self.combo_decimals.pack(fill="x", pady=(0, 10))
+
         self.frame_buttons = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.frame_buttons.pack(padx=20, pady=10, fill="x")
         
@@ -399,10 +406,9 @@ class ConvergenceApp(ctk.CTk):
         self.lbl_error_val.pack(pady=(0, 10))
         # ------------------
 
-        ctk.CTkLabel(self.sidebar, text="System Log", font=("Roboto", 14, "bold")).pack(padx=20, pady=(20, 0), anchor="w")
-        self.log_box = ctk.CTkTextbox(self.sidebar, font=("Consolas", 12), height=200)
-        self.log_box.pack(padx=20, pady=(5, 20), fill="both", expand=True)
-        self.log_box.configure(state="disabled")
+        # Status Label instead of Log
+        self.lbl_status = ctk.CTkLabel(self.sidebar, text="Ready", font=("Roboto", 12), text_color="#aaaaaa", wraplength=280)
+        self.lbl_status.pack(side="bottom", pady=20)
 
     def init_graph_tab(self):
         self.tab_graph.grid_columnconfigure(0, weight=1)
@@ -471,32 +477,54 @@ class ConvergenceApp(ctk.CTk):
         self.tree.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         scrollbar.pack(side="right", fill="y", pady=5)
 
-    def log(self, message):
-        self.log_box.configure(state="normal")
-        self.log_box.insert("end", message + "\n")
-        self.log_box.see("end")
-        self.log_box.configure(state="disabled")
+    def set_status(self, message, is_error=False):
+        self.lbl_status.configure(text=message, text_color="#e74c3c" if is_error else "#aaaaaa")
+
+    def get_precision(self):
+        try:
+            return int(self.combo_decimals.get())
+        except:
+            return 6
 
     def update_hud(self, x_val, error_val):
-        self.lbl_x_val.configure(text=f"{x_val:.6f}")
+        prec = self.get_precision()
+        self.lbl_x_val.configure(text=f"{x_val:.{prec}f}")
         if error_val is not None:
-            self.lbl_error_val.configure(text=f"{error_val:.6f}%")
+            self.lbl_error_val.configure(text=f"{error_val:.{prec}f}%")
         else:
             self.lbl_error_val.configure(text="---")
+
+    def update_table(self):
+        # Clear existing table
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+            
+        prec = self.get_precision()
+        
+        for i, res in enumerate(self.step_data_history):
+            # Highlight last row
+            tags = ()
+            if i == len(self.step_data_history) - 1:
+                tags = ('final',)
+                
+            self.tree.insert("", "end", values=(
+                res["step"],
+                f"{res['x_in']:.{prec}f}",
+                f"{res['x_next'] if 'x_next' in res else res['x_out']:.{prec}f}", 
+                f"{res['error']:.{prec}f}"
+            ), tags=tags)
 
     def on_initialize(self):
         g_str = self.entry_g.get()
         x0_str = self.entry_x0.get()
         
         if not g_str or not x0_str:
-            self.log("[ERROR] Please fill in Function and Initial Guess.")
+            self.set_status("Please fill in Function and Initial Guess.", True)
             return
 
         success, msg = self.engine.initialize(g_str, x0_str)
         if success:
-            self.log(f"[SYSTEM] {msg}")
-            self.log(f"[INIT] g(x) = {g_str}")
-            self.log(f"[INIT] x0 = {x0_str}")
+            self.set_status(f"Initialized: g(x)={g_str}, x0={x0_str}")
             
             self.entry_g.configure(state="disabled")
             self.entry_x0.configure(state="disabled")
@@ -504,12 +532,14 @@ class ConvergenceApp(ctk.CTk):
             self.btn_step.configure(state="normal")
             self.btn_auto.configure(state="normal")
             
+            self.step_data_history = [] # Reset history
             self.update_hud(self.engine.x_current, None)
+            self.update_table()
             self.plot_base_functions()
             
             self.tabview.set("Visualization")
         else:
-            self.log(f"[ERROR] {msg}")
+            self.set_status(msg, True)
 
     def plot_base_functions(self):
         self.ax.clear()
@@ -528,7 +558,7 @@ class ConvergenceApp(ctk.CTk):
             y_vals = [self.engine.g_func(x) for x in x_vals]
             self.ax.plot(x_vals, y_vals, color=COLOR_LINE_G_X, label=f"y = {self.engine.g_str}", linewidth=1.5)
         except Exception as e:
-            self.log(f"[PLOT ERROR] Could not plot g(x): {e}")
+            self.set_status(f"Plot Error: {e}", True)
         
         self.ax.legend()
         self.canvas.draw()
@@ -536,7 +566,9 @@ class ConvergenceApp(ctk.CTk):
         self.ax.plot(x0, 0, 'o', color='white', markersize=4)
         
         # Re-add annotation
-        self.annot.set_text(f"Start: {x0}")
+        self.annot = self.ax.text(0.05, 0.95, f"Start: {x0}", transform=self.ax.transAxes, 
+                                  color="white", fontsize=10, verticalalignment='top',
+                                  bbox=dict(boxstyle="round", facecolor="#1a1a1a", alpha=0.7))
         self.canvas.draw()
 
     def on_step(self):
@@ -545,7 +577,7 @@ class ConvergenceApp(ctk.CTk):
             return
         
         if "error" in result and isinstance(result["error"], str):
-            self.log(f"[ERROR] {result['error']}")
+            self.set_status(result['error'], True)
             return
 
         step_num = result["step"]
@@ -553,10 +585,9 @@ class ConvergenceApp(ctk.CTk):
         x_out = result["x_out"]
         err = result["error"]
         
-        self.log(f"[STEP {step_num}] x: {x_in:.4f} -> g(x): {x_out:.4f}")
-        self.log(f"         Error: {err:.4f}%")
-        
+        self.step_data_history.append(result)
         self.update_hud(x_out, err)
+        self.update_table()
         
         # Draw Cobweb
         points = result["points"]
@@ -567,7 +598,8 @@ class ConvergenceApp(ctk.CTk):
         self.ax.plot(x_out, x_out, 'o', color=COLOR_COBWEB, markersize=3)
         
         # Update Annotation
-        self.annot.set_text(f"Step: {step_num}\nx: {x_out:.4f}\nErr: {err:.4f}%")
+        prec = self.get_precision()
+        self.annot.set_text(f"Step: {step_num}\nx: {x_out:.{prec}f}\nErr: {err:.{prec}f}%")
         
         self.canvas.draw()
 
@@ -576,46 +608,40 @@ class ConvergenceApp(ctk.CTk):
             tol = float(self.entry_tol.get())
             max_iter = int(self.entry_max_iter.get())
         except ValueError:
-            self.log("[ERROR] Invalid Tolerance or Max Iterations.")
+            self.set_status("Invalid Tolerance or Max Iterations.", True)
             return
 
-        self.log(f"[AUTO] Running until error < {tol} or iter >= {max_iter}...")
+        self.set_status(f"Running auto... (Tol: {tol}, Max: {max_iter})")
         
         results = self.engine.run_auto(tol, max_iter)
         
         if not results:
-            self.log("[AUTO] No results generated.")
+            self.set_status("No results generated.")
             return
 
-        self.tabview.set("Data Table")
+        self.step_data_history.extend(results)
+        self.update_table()
         
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-            
-        for i, res in enumerate(results):
-            if "error" in res and isinstance(res["error"], str):
-                self.log(f"[AUTO ERROR] {res['error']}")
-                break
-            
-            # Highlight last row
-            tags = ()
-            if i == len(results) - 1:
-                tags = ('final',)
-                
-            self.tree.insert("", "end", values=(
-                res["step"],
-                f"{res['x_in']:.6f}",
-                f"{res['x_next'] if 'x_next' in res else res['x_out']:.6f}", 
-                f"{res['error']:.6f}"
-            ), tags=tags)
-            
         last_res = results[-1]
-        self.log(f"[AUTO] Finished at Step {last_res['step']}. Final Error: {last_res['error']:.6f}%")
         self.update_hud(last_res['x_out'], last_res['error'])
+        self.set_status(f"Finished at Step {last_res['step']}.")
+        
+        # Also update graph with all new points
+        for res in results:
+            points = res["points"]
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            self.ax.plot(xs, ys, color=COLOR_COBWEB, linewidth=1, alpha=0.8)
+            
+        self.ax.plot(last_res['x_out'], last_res['x_out'], 'o', color=COLOR_COBWEB, markersize=3)
+        self.canvas.draw()
+        
+        self.tabview.set("Data Table")
 
     def on_reset(self):
         self.engine.reset()
-        self.log("[SYSTEM] Resetting...")
+        self.step_data_history = []
+        self.set_status("Reset complete.")
         
         self.entry_g.configure(state="normal")
         self.entry_x0.configure(state="normal")
@@ -627,12 +653,7 @@ class ConvergenceApp(ctk.CTk):
         self.ax.grid(True, linestyle='--', alpha=0.3)
         self.canvas.draw()
         
-        self.log_box.configure(state="normal")
-        self.log_box.delete("1.0", "end")
-        self.log_box.configure(state="disabled")
-        
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        self.update_table()
             
         self.lbl_x_val.configure(text="---")
         self.lbl_error_val.configure(text="---")

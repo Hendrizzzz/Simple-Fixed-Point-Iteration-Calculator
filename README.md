@@ -28,7 +28,7 @@ Follow these steps to set up the application on a new computer.
 Clone this repository or download the source code to your local machine.
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Hendrizzzz/Simple-Fixed-Point-Iteration-Calculator
 cd Simple-Fixed-Point-Iteration-Calculator
 ```
 
