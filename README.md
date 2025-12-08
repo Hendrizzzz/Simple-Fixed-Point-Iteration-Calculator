@@ -70,6 +70,15 @@ Execute the main script to launch the application:
 python convergence_engine.py
 ```
 
+### Running the Web Version (Streamlit)
+
+To launch the web-based version of the application:
+
+```bash
+streamlit run app.py
+```
+
+
 ### How to Use
 
 1.  **Configuration (Sidebar)**:
