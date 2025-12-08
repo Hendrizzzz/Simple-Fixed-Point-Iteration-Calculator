@@ -17,7 +17,6 @@ except ImportError:
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Define colors only if not already defined (or just define them as constants since they are just strings)
 COLOR_BG = "#1a1a1a"
 COLOR_ACCENT = "#1f6aa5"
 COLOR_TEXT = "#ffffff"
@@ -352,7 +351,7 @@ class ConvergenceApp(ctk.CTk if ctk else object):
         self.init_table_tab()
 
     def init_sidebar(self):
-        self.sidebar.grid_rowconfigure(10, weight=1) # Push log to bottom if needed, or just let it expand
+        self.sidebar.grid_rowconfigure(10, weight=1) 
 
         lbl_title = ctk.CTkLabel(self.sidebar, text="CONFIGURATION", font=("Roboto", 20, "bold"))
         lbl_title.pack(padx=20, pady=(20, 10), anchor="w")
@@ -481,7 +480,6 @@ class ConvergenceApp(ctk.CTk if ctk else object):
         self.tree.column("current_x", width=150, anchor="center")
         self.tree.column("error", width=150, anchor="center")
 
-        # Tag for highlighting
         self.tree.tag_configure('final', background='#2ecc71', foreground='black')
 
         scrollbar = ttk.Scrollbar(self.tab_table, orient="vertical", command=self.tree.yview)
@@ -622,7 +620,6 @@ class ConvergenceApp(ctk.CTk if ctk else object):
         self.lbl_step_counter.configure(text=f"Iteration: {step_num}") # Update step counter
         self.update_table()
         
-        # Draw Cobweb
         points = result["points"]
         xs = [p[0] for p in points]
         ys = [p[1] for p in points]
@@ -660,7 +657,6 @@ class ConvergenceApp(ctk.CTk if ctk else object):
         self.lbl_step_counter.configure(text=f"Iteration: {last_res['step']}") # Update step counter
         self.set_status(f"Finished at Iteration {last_res['step']}.")
         
-        # Also update graph with all new points
         for res in results:
             points = res["points"]
             xs = [p[0] for p in points]

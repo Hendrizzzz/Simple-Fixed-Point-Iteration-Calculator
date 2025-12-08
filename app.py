@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from convergence_engine import IterationEngine
 
-# --- Configuration & Styling ---
 st.set_page_config(
     page_title="The Convergence Engine",
     page_icon="🕸️",
@@ -12,11 +11,14 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for dark mode aesthestics to match the desktop app vibe
 st.markdown("""
     <style>
         .stApp {
             background_color: #0e1117;
+        }
+        [data-testid="stSidebar"] {
+            min-width: 400px;
+            max-width: 400px;
         }
         .css-1d391kg {
             padding-top: 1rem;
@@ -30,7 +32,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- State Management ---
 if 'engine' not in st.session_state:
     st.session_state.engine = IterationEngine()
 if 'initialized' not in st.session_state:
@@ -40,30 +41,26 @@ if 'history_df' not in st.session_state:
 if 'auto_complete' not in st.session_state:
     st.session_state.auto_complete = False
 
-# --- Sidebar ---
+# Sidebar dawg
 with st.sidebar:
     st.title("Configuration")
     
-    with st.form("init_form"):
-        g_func_input = st.text_input("Function g(x):", value="np.cos(x)", help="Enter a python expression using 'x' and 'np'.")
-        x0_input = st.text_input("Initial Guess x0:", value="0.5")
+    g_func_input = st.text_input("Function g(x):", value="np.cos(x)", help="Enter a python expression using 'x' and 'np'.")
+    x0_input = st.text_input("Initial Guess x0:", value="0.5")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        tol_input = st.text_input("Tolerance:", value="0.0001")
+    with col2:
+        max_iter_input = st.number_input("Max Iterations:", value=100, min_value=1, step=1)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            tol_input = st.text_input("Tolerance:", value="0.0001")
-        with col2:
-            max_iter_input = st.number_input("Max Iterations:", value=100, min_value=1, step=1)
-            
-        decimals = st.slider("Decimal Places:", min_value=0, max_value=20, value=6)
-        
-        submitted = st.form_submit_button("Initialize / Reset", type="primary")
-
-    if submitted:
+    decimals = st.slider("Decimal Places:", min_value=0, max_value=20, value=6)
+    
+    if st.button("Initialize / Reset", type="primary"):
         success, msg = st.session_state.engine.initialize(g_func_input, x0_input)
         if success:
             st.session_state.initialized = True
             st.session_state.auto_complete = False
-            # Reset history
             st.session_state.history_df = pd.DataFrame([{
                 "Iteration": 0,
                 "Previous X": st.session_state.engine.previous_x,
@@ -77,7 +74,6 @@ with st.sidebar:
 
     st.markdown("---")
     
-    # Control Buttons
     col_step, col_auto = st.columns(2)
     with col_step:
         if st.button("Next Step", disabled=not st.session_state.initialized or st.session_state.auto_complete):
@@ -113,13 +109,12 @@ with st.sidebar:
                 st.error("Invalid tolerance value.")
 
 
-# --- Main Content ---
+# Main Content
 st.title("The Convergence Engine")
 
 if not st.session_state.initialized:
     st.info("👈 Please initialize the function in the sidebar to start.")
 else:
-    # Top HUD
     last_row = st.session_state.history_df.iloc[-1]
     curr_x = last_row["Current X"]
     curr_err = last_row["Error (%)"]
@@ -139,28 +134,20 @@ else:
         except:
             pass
 
-    # Tabs
     tab1, tab2 = st.tabs(["Visualization", "Data Table"])
 
     with tab1:
-        # Plotting
         fig, ax = plt.subplots(figsize=(8, 6))
         
-        # Determine range
         x0_start = st.session_state.engine.history[0][0] # x0 is first point x
-        # Find min/max of all history points to scale graph dynamically
         all_xs = [p[0] for p in st.session_state.engine.history] + [p[1] for p in st.session_state.engine.history]
         min_dim = min(all_xs) - 1
         max_dim = max(all_xs) + 1
         
         x_vals = np.linspace(min_dim, max_dim, 400)
         
-        # Base Functions
         ax.plot(x_vals, x_vals, color="#00ff00", label="y = x", linewidth=1.5, linestyle="--")
         try:
-            # We need to recreate the lambda context since it might not pickle well in some envs, 
-            # though locally streamilit holds memory. 
-            # But safer to just use the engine's current func if available.
             y_vals = [st.session_state.engine.g_func(x) for x in x_vals]
             ax.plot(x_vals, y_vals, color="#00ffff", label=f"y = {st.session_state.engine.g_str}", linewidth=1.5)
         except Exception as e:
@@ -191,9 +178,7 @@ else:
         st.pyplot(fig)
 
     with tab2:
-        # Format dataframe for display
         display_df = st.session_state.history_df.copy()
-        # Apply string formatting for precision
         display_df["Previous X"] = display_df["Previous X"].apply(lambda x: f"{x:.{decimals}f}")
         display_df["Current X"] = display_df["Current X"].apply(lambda x: f"{x:.{decimals}f}")
         display_df["Error (%)"] = display_df["Error (%)"].apply(lambda x: f"{x:.{decimals}f}")
