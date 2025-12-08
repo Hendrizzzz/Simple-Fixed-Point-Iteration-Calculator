@@ -290,7 +290,6 @@ else:
         }
 
         st.plotly_chart(fig, use_container_width=True, config=config)
-        st.caption("💡 Tip: Scroll to zoom. Keys: **H**=Pan, **Z**=Zoom, **R**=Reset, **+**=In, **-**=Out")
 
     with tab2:
         df_display = st.session_state.history_df.copy()
