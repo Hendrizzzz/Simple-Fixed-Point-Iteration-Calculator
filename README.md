@@ -71,7 +71,7 @@ pip install -r requirements.txt
 Execute the main script to launch the application:
 
 ```bash
-python convergence_engine.py
+python run_desktop.py
 ```
 
 ### Running the Web Version (Streamlit)
