@@ -24,7 +24,7 @@ def get_friendly_error_message(raw_error):
         return f"🤔 **Unknown Word:** The app doesn't understand **'{var_name}'**. Please use standard math (e.g., `cos`, `sqrt`) and use `*` for multiplication."
     
     if "overflow" in msg or "too large" in msg or "infinity" in msg or "out of range" in msg:
-    return "💥 **Number Explosion:** The numbers became too huge to calculate (Infinity). The function is diverging rapidly."
+        return "💥 **Number Explosion:** The numbers became too huge to calculate (Infinity). The function is diverging rapidly."
     
     if "syntax" in msg or "unexpected eof" in msg or "parsing" in msg or "invalid syntax" in msg:
         return "✍️ **Syntax Error:** Please check your equation. You might have missing parentheses or an incomplete expression."
