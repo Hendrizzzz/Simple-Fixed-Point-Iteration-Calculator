@@ -6,26 +6,45 @@ import streamlit.components.v1 as components
 import re  
 from convergence_engine import IterationEngine
 
+def get_friendly_error_message(raw_error):
+    """
+    Translates raw Python exceptions into helpful, non-technical user feedback.
+    The ORDER of checks is critical here.
+    """
+    msg = str(raw_error).lower()
+    
+    if "division by zero" in msg:
+        return "🚫 **Math Error:** Division by zero occurred. The value of 'x' hit 0."
+    
+    if "domain" in msg or "complex" in msg or "negative" in msg or "nan" in msg:
+        return "⛔ **Domain Error:** The calculation resulted in an impossible number (e.g., Square Root of a negative number or Log of zero/negative). Check your Initial Guess."
+    
+    if "name" in msg and "is not defined" in msg:
+        match = re.search(r"name '(.+?)' is not defined", str(raw_error))
+        var_name = match.group(1) if match else "unknown"
+        return f"🤔 **Unknown Word:** The app doesn't understand **'{var_name}'**. Please use standard math (e.g., `cos`, `sqrt`) and use `*` for multiplication."
+    
+    if "overflow" in msg or "too large" in msg:
+        return "💥 **Number Explosion:** The numbers became too huge to calculate. The function is diverging."
+    
+    if "syntax" in msg or "unexpected eof" in msg or "parsing" in msg or "invalid syntax" in msg:
+        return "✍️ **Syntax Error:** Please check your equation. You might have missing parentheses or an incomplete expression."
+
+    return f"⚠️ **Calculation Failed:** {raw_error}"
+
 
 def process_math_input(user_input):
     """
     Translates 'Human Math' to 'Python/Numpy Math' safely.
-    Example: "cos(x) + x^2" -> "np.cos(x) + x**2"
     """
     if not user_input: return ""
     
-    expr = user_input.replace("^", "**")
+    expr = user_input.strip().replace("^", "**")
     
     mappings = [
-        (r'\bcos\b', 'np.cos'),
-        (r'\bsin\b', 'np.sin'),
-        (r'\btan\b', 'np.tan'),
-        (r'\bsqrt\b', 'np.sqrt'),
-        (r'\bexp\b', 'np.exp'),
-        (r'\blog\b', 'np.log'),
-        (r'\bpi\b', 'np.pi'),
-        (r'\be\b', 'np.e'),
-        (r'\babs\b', 'np.abs')
+        (r'\bcos\b', 'np.cos'), (r'\bsin\b', 'np.sin'), (r'\btan\b', 'np.tan'),
+        (r'\bsqrt\b', 'np.sqrt'), (r'\bexp\b', 'np.exp'), (r'\blog\b', 'np.log'),
+        (r'\bpi\b', 'np.pi'), (r'\be\b', 'np.e'), (r'\babs\b', 'np.abs')
     ]
     
     for pattern, replacement in mappings:
@@ -42,25 +61,10 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        .stApp {
-            background_color: #0e1117;
-        }
-        .metric-card {
-            background-color: #262730;
-            padding: 15px;
-            border-radius: 10px;
-            text_align: center;
-        }
-        .success-box {
-            padding: 1rem;
-            border-radius: 0.5rem;
-            background-color: rgba(0, 255, 0, 0.1);
-            border: 1px solid #00ff00;
-            margin-bottom: 1rem;
-        }
-        div[data-testid="stToast"] {
-            padding: 1rem;
-        }
+        .stApp { background_color: #0e1117; }
+        .metric-card { background-color: #262730; padding: 15px; border-radius: 10px; text_align: center; }
+        .success-box { padding: 1rem; border-radius: 0.5rem; background-color: rgba(0, 255, 0, 0.1); border: 1px solid #00ff00; margin-bottom: 1rem; }
+        div[data-testid="stToast"] { padding: 1rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -97,21 +101,36 @@ with st.sidebar:
         """)
 
     if submitted:
-        processed_func = process_math_input(g_func_raw)
-        
-        success, msg = st.session_state.engine.initialize(processed_func, x0_input)
-        if success:
-            st.session_state.initialized = True
-            st.session_state.history_df = pd.DataFrame([{
-                "Iteration": 0,
-                "Previous X": st.session_state.engine.previous_x,
-                "Current X": st.session_state.engine.previous_x,
-                "Error (%)": 0.0
-            }])
-            st.toast(f"System Initialized: x₀ = {st.session_state.engine.previous_x}", icon="✅")
-        else:
-            st.error(f"Error: {msg}")
+        if not g_func_raw.strip():
+            st.error("⚠️ **Missing Input:** Please enter a function (e.g., `cos(x)`).")
             st.session_state.initialized = False
+        else:
+            try:
+                float(x0_input) 
+                valid_number = True
+            except ValueError:
+                st.error("🔢 **Input Error:** Initial Guess must be a valid number (e.g., 0.5, -2).")
+                valid_number = False
+                st.session_state.initialized = False
+
+            if valid_number:
+                processed_func = process_math_input(g_func_raw)
+                
+                success, msg = st.session_state.engine.initialize(processed_func, x0_input)
+                
+                if success:
+                    st.session_state.initialized = True
+                    st.session_state.history_df = pd.DataFrame([{
+                        "Iteration": 0,
+                        "Previous X": st.session_state.engine.previous_x,
+                        "Current X": st.session_state.engine.previous_x,
+                        "Error (%)": 0.0
+                    }])
+                    st.toast(f"System Initialized: x₀ = {st.session_state.engine.previous_x}", icon="✅")
+                else:
+                    friendly_msg = get_friendly_error_message(msg)
+                    st.error(friendly_msg)
+                    st.session_state.initialized = False
 
     st.markdown("---")
     
@@ -121,7 +140,7 @@ with st.sidebar:
         if st.button("Next Step", disabled=not st.session_state.initialized, use_container_width=True):
              result = st.session_state.engine.step()
              if result and "error" in result and isinstance(result["error"], str):
-                 st.error(result["error"])
+                 st.error(get_friendly_error_message(result["error"]))
              elif result:
                  new_row = {
                      "Iteration": int(result["step"]),
@@ -147,7 +166,7 @@ with st.sidebar:
                          })
                     st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame(new_rows)], ignore_index=True)
             except ValueError:
-                st.error("Invalid tolerance value.")
+                st.error("🔢 **Input Error:** Invalid tolerance value.")
 
 
 st.title("The Convergence Engine")
