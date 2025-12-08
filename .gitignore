@@ -1,0 +1,37 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+.env
+
+# IDE settings
+.vscode/
+.idea/
+
+# Distribution / Builds
+build/
+dist/
+*.spec
+
+# Logs
+*.log
+
+# Python virtual environment
+venv/
+env/
+.venv/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local configuration
+.env
+.DS_Store
