@@ -2,6 +2,10 @@
 
 A high-fidelity, interactive educational application for visualizing the Fixed Point Iteration method ($x_{n+1} = g(x_n)$). This tool is designed for students, educators, and math enthusiasts to explore convergence, divergence, and chaos in a modern, dark-themed environment.
 
+## 🚀 Live Demo
+**Try the web app here:** [hendrizzzz.streamlit.app](https://hendrizzzz.streamlit.app)
+
+
 ## Features
 
 *   **Dual Modes**:
