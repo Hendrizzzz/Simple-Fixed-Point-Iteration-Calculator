@@ -9,7 +9,6 @@ from convergence_engine import IterationEngine
 def get_friendly_error_message(raw_error):
     """
     Translates raw Python exceptions into helpful, non-technical user feedback.
-    The ORDER of checks is critical here.
     """
     msg = str(raw_error).lower()
     
@@ -17,28 +16,26 @@ def get_friendly_error_message(raw_error):
         return "🚫 **Math Error:** Division by zero occurred. The value of 'x' hit 0."
     
     if "domain" in msg or "complex" in msg or "negative" in msg or "nan" in msg:
-        return "⛔ **Domain Error:** The calculation resulted in an impossible number (e.g., Square Root of a negative number or Log of zero/negative). Check your Initial Guess."
+        return "⛔ **Domain Error:** The calculation resulted in an impossible number (e.g., Square Root of a negative number). Check your Initial Guess."
     
     if "name" in msg and "is not defined" in msg:
         match = re.search(r"name '(.+?)' is not defined", str(raw_error))
         var_name = match.group(1) if match else "unknown"
         return f"🤔 **Unknown Word:** The app doesn't understand **'{var_name}'**. Please use standard math (e.g., `cos`, `sqrt`) and use `*` for multiplication."
     
-    if "overflow" in msg or "too large" in msg:
-        return "💥 **Number Explosion:** The numbers became too huge to calculate. The function is diverging."
+    if "overflow" in msg or "too large" in msg or "infinity" in msg:
+        return "💥 **Number Explosion:** The numbers became too huge to calculate (Infinity). The function is diverging rapidly."
     
     if "syntax" in msg or "unexpected eof" in msg or "parsing" in msg or "invalid syntax" in msg:
         return "✍️ **Syntax Error:** Please check your equation. You might have missing parentheses or an incomplete expression."
 
     return f"⚠️ **Calculation Failed:** {raw_error}"
 
-
 def process_math_input(user_input):
     """
     Translates 'Human Math' to 'Python/Numpy Math' safely.
     """
     if not user_input: return ""
-    
     expr = user_input.strip().replace("^", "**")
     
     mappings = [
@@ -109,13 +106,12 @@ with st.sidebar:
                 float(x0_input) 
                 valid_number = True
             except ValueError:
-                st.error("🔢 **Input Error:** Initial Guess must be a valid number (e.g., 0.5, -2).")
+                st.error("🔢 **Input Error:** Initial Guess must be a valid number.")
                 valid_number = False
                 st.session_state.initialized = False
 
             if valid_number:
                 processed_func = process_math_input(g_func_raw)
-                
                 success, msg = st.session_state.engine.initialize(processed_func, x0_input)
                 
                 if success:
@@ -128,8 +124,7 @@ with st.sidebar:
                     }])
                     st.toast(f"System Initialized: x₀ = {st.session_state.engine.previous_x}", icon="✅")
                 else:
-                    friendly_msg = get_friendly_error_message(msg)
-                    st.error(friendly_msg)
+                    st.error(get_friendly_error_message(msg))
                     st.session_state.initialized = False
 
     st.markdown("---")
@@ -137,36 +132,49 @@ with st.sidebar:
     col_step, col_auto = st.columns(2)
     
     with col_step:
-        if st.button("Next Step", disabled=not st.session_state.initialized, use_container_width=True):
-             result = st.session_state.engine.step()
-             if result and "error" in result and isinstance(result["error"], str):
-                 st.error(get_friendly_error_message(result["error"]))
-             elif result:
-                 new_row = {
-                     "Iteration": int(result["step"]),
-                     "Previous X": result["x_in"],
-                     "Current X": result["x_out"],
-                     "Error (%)": result["error"]
-                 }
-                 st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame([new_row])], ignore_index=True)
-
+        step_clicked = st.button("Next Step", disabled=not st.session_state.initialized, use_container_width=True)
     with col_auto:
-        if st.button("Run Auto", disabled=not st.session_state.initialized, use_container_width=True):
-            try:
-                tol_val = float(tol_input)
-                results = st.session_state.engine.run_auto(tol_val, int(max_iter_input))
-                if results:
-                    new_rows = []
-                    for res in results:
-                         new_rows.append({
-                             "Iteration": int(res["step"]),
-                             "Previous X": res["x_in"],
-                             "Current X": res["x_out"],
-                             "Error (%)": res["error"]
-                         })
+        auto_clicked = st.button("Run Auto", disabled=not st.session_state.initialized, use_container_width=True)
+
+    if step_clicked:
+         result = st.session_state.engine.step()
+         if result and "error" in result and isinstance(result["error"], str):
+             st.error(get_friendly_error_message(result["error"]))
+         elif result:
+             new_row = {
+                 "Iteration": int(result["step"]),
+                 "Previous X": result["x_in"],
+                 "Current X": result["x_out"],
+                 "Error (%)": result["error"]
+             }
+             st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame([new_row])], ignore_index=True)
+
+    if auto_clicked:
+        try:
+            tol_val = float(tol_input)
+            results = st.session_state.engine.run_auto(tol_val, int(max_iter_input))
+            
+            if results:
+                new_rows = []
+                for res in results:
+                    if "error" in res and isinstance(res["error"], str):
+                        st.error(get_friendly_error_message(res["error"]))
+                        break 
+                    
+                    if "step" in res:
+                        new_rows.append({
+                            "Iteration": int(res["step"]),
+                            "Previous X": res["x_in"],
+                            "Current X": res["x_out"],
+                            "Error (%)": res["error"]
+                        })
+                
+                if new_rows:
                     st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame(new_rows)], ignore_index=True)
-            except ValueError:
-                st.error("🔢 **Input Error:** Invalid tolerance value.")
+        except ValueError:
+            st.error("🔢 **Input Error:** Invalid tolerance value.")
+        except Exception as e:
+            st.error(get_friendly_error_message(e))
 
 
 st.title("The Convergence Engine")
