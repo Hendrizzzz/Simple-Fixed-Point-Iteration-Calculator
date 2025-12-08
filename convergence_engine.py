@@ -1,22 +1,30 @@
-import customtkinter as ctk
-import tkinter as tk
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from matplotlib.figure import Figure
+
+# UI Libraries (only imported if running the desktop app)
+try:
+    import customtkinter as ctk
+    import tkinter as tk
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+    from matplotlib.figure import Figure
+    import tkinter.ttk as ttk
+except ImportError:
+    ctk = None
+    tk = None
+    FigureCanvasTkAgg = None
+    NavigationToolbar2Tk = None
+    Figure = None
+    ttk = None
+
 import numpy as np
 import matplotlib.pyplot as plt
 
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("dark-blue")
-
-plt.style.use('dark_background')
-
-COLOR_BG = "#1a1a1a"  # Dark Grey/Black
-COLOR_ACCENT = "#1f6aa5" # CTK Blue
+# Define colors only if not already defined (or just define them as constants since they are just strings)
+COLOR_BG = "#1a1a1a"
+COLOR_ACCENT = "#1f6aa5"
 COLOR_TEXT = "#ffffff"
 COLOR_PLOT_BG = "#2b2b2b"
-COLOR_LINE_Y_X = "#00ff00" # Green
-COLOR_LINE_G_X = "#00ffff" # Cyan
-COLOR_COBWEB = "#ffff00" # Yellow
+COLOR_LINE_Y_X = "#00ff00"
+COLOR_LINE_G_X = "#00ffff"
+COLOR_COBWEB = "#ffff00"
 
 class IterationEngine:
     """
@@ -71,12 +79,9 @@ class IterationEngine:
         else:
             self.error = 0.0
 
-        p1 = (x_in, x_in) if self.step_count > 0 else (x_in, 0) 
-        
+        # p1 = (x_in, x_in) if self.step_count > 0 else (x_in, 0) 
         prev_pt = self.history[-1]
-        
         pt_curve = (x_in, x_out)
-        
         pt_diag = (x_out, x_out)
         
         self.history.append(pt_curve)
@@ -103,7 +108,6 @@ class IterationEngine:
 
         results = []
         
-        
         while self.step_count < max_iter:
             step_data = self.step()
             if not step_data or "error" in step_data and isinstance(step_data["error"], str):
@@ -125,9 +129,8 @@ class IterationEngine:
         self.error = None
 
 
-import tkinter.ttk as ttk
+class ConvergenceApp(ctk.CTk if ctk else object):
 
-class ConvergenceApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
@@ -189,25 +192,33 @@ class ConvergenceApp(ctk.CTk):
         self.btn_step = ctk.CTkButton(self.frame_buttons, text="NEXT STEP", command=self.on_step, state="disabled")
         self.btn_step.pack(fill="x", pady=5)
 
-import customtkinter as ctk
-import tkinter as tk
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from matplotlib.figure import Figure
+
+# UI Libraries (only imported if running the desktop app)
+try:
+    import customtkinter as ctk
+    import tkinter as tk
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+    from matplotlib.figure import Figure
+    import tkinter.ttk as ttk
+except ImportError:
+    ctk = None
+    tk = None
+    FigureCanvasTkAgg = None
+    NavigationToolbar2Tk = None
+    Figure = None
+    ttk = None
+
 import numpy as np
 import matplotlib.pyplot as plt
 
-ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("dark-blue")
-
-plt.style.use('dark_background')
-
-COLOR_BG = "#1a1a1a"  # Dark Grey/Black
-COLOR_ACCENT = "#1f6aa5" # CTK Blue
+# Define colors only if not already defined (or just define them as constants since they are just strings)
+COLOR_BG = "#1a1a1a"
+COLOR_ACCENT = "#1f6aa5"
 COLOR_TEXT = "#ffffff"
 COLOR_PLOT_BG = "#2b2b2b"
-COLOR_LINE_Y_X = "#00ff00" # Green
-COLOR_LINE_G_X = "#00ffff" # Cyan
-COLOR_COBWEB = "#ffff00" # Yellow
+COLOR_LINE_Y_X = "#00ff00"
+COLOR_LINE_G_X = "#00ffff"
+COLOR_COBWEB = "#ffff00"
 
 class IterationEngine:
     """
@@ -262,12 +273,9 @@ class IterationEngine:
         else:
             self.error = 0.0
 
-        p1 = (x_in, x_in) if self.step_count > 0 else (x_in, 0) 
-        
+        # p1 = (x_in, x_in) if self.step_count > 0 else (x_in, 0) 
         prev_pt = self.history[-1]
-        
         pt_curve = (x_in, x_out)
-        
         pt_diag = (x_out, x_out)
         
         self.history.append(pt_curve)
@@ -294,7 +302,6 @@ class IterationEngine:
 
         results = []
         
-        
         while self.step_count < max_iter:
             step_data = self.step()
             if not step_data or "error" in step_data and isinstance(step_data["error"], str):
@@ -316,9 +323,8 @@ class IterationEngine:
         self.error = None
 
 
-import tkinter.ttk as ttk
+class ConvergenceApp(ctk.CTk if ctk else object):
 
-class ConvergenceApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
@@ -688,5 +694,12 @@ class ConvergenceApp(ctk.CTk):
         self.lbl_error_val.configure(text="---")
 
 if __name__ == "__main__":
-    app = ConvergenceApp()
-    app.mainloop()
+    if ctk:
+        ctk.set_appearance_mode("Dark")
+        ctk.set_default_color_theme("dark-blue")
+        plt.style.use('dark_background')
+        app = ConvergenceApp()
+        app.mainloop()
+    else:
+        print("CustomTkinter not installed or Tkinter not supported. Cannot run desktop GUI.")
+
