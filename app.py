@@ -226,7 +226,7 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("👁️ Visuals")
     show_cobweb = st.toggle("Show Cobweb Path", value=True)
-    auto_focus = st.toggle("Auto-Scale on Step", value=True, help="ON: Zooms to new points automatically.\nOFF: Maintains your manual scroll/zoom level.")
+    auto_focus = st.toggle("Auto-Scale on Step", value=True, help="ON: Zooms to new points automatically (Recommended).\nOFF: Default View.")
     
     with st.expander("📚 Math Syntax Guide"):
         st.markdown("""
