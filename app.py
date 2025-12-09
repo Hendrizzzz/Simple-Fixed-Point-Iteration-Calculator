@@ -6,6 +6,8 @@ import re
 import math
 
 
+
+
 class IterationEngine:
     def __init__(self):
         self.expression = ""
@@ -20,7 +22,7 @@ class IterationEngine:
             self.previous_x = float(x0)
             val = self.evaluate_g(self.previous_x)
             if np.isnan(val) or np.iscomplex(val):
-                return False, "DomainError: Initial guess results in an undefined value (e.g. sqrt of negative)."
+                return False, "DomainError: Initial guess results in an undefined value."
             return True, ""
         except Exception as e:
             return False, e
@@ -33,7 +35,6 @@ class IterationEngine:
             "sqrt": np.sqrt, "log": np.log, "exp": np.exp,
             "abs": np.abs, "pi": np.pi, "e": np.e
         }
-        
         with np.errstate(all='ignore'):
             try:
                 result = eval(self.g_str, {"__builtins__": {}}, safe_dict)
@@ -43,19 +44,16 @@ class IterationEngine:
             except Exception as e:
                 raise e
 
-
-
     def step(self):
         try:
             x_in = self.previous_x
-            
             if abs(x_in) > 1e10:
                 return {"error_msg": "OverflowError: Values are too large (Divergence)"}
 
             x_out = self.evaluate_g(x_in)
             
             if np.isnan(x_out) or np.iscomplex(x_out):
-                return {"error_msg": "DomainError: Result is not a real number (e.g. sqrt(-5))."}
+                return {"error_msg": "DomainError: Result is not a real number."}
 
             if x_out == 0:
                 error_pct = 0.0 if x_in == 0 else 100.0
@@ -92,6 +90,8 @@ class IterationEngine:
 
 
 
+
+
 def process_math_input(user_input):
     if not user_input: return ""
     expr = user_input.strip().replace("^", "**")
@@ -106,16 +106,12 @@ def process_math_input(user_input):
 
 def get_friendly_error_message(raw_error):
     msg = str(raw_error).lower()
-    
-    if "import" in msg or "module" in msg:
-        return "🚫 **Security/Syntax Error:** Import statements or external modules are not allowed."
-
+    if "import" in msg or "module" in msg: return "🚫 **Security/Syntax Error:** Import statements not allowed."
     if "division by zero" in msg: return "🚫 **Math Error:** Division by zero."
-    if "domain" in msg or "complex" in msg or "nan" in msg: return "⛔ **Domain Error:** Result is undefined (e.g. Square Root of a negative number)."
+    if "domain" in msg or "complex" in msg or "nan" in msg: return "⛔ **Domain Error:** Result is undefined."
     if "name" in msg and "is not defined" in msg: return "🤔 **Unknown Syntax:** Use standard math (e.g. `cos(x)`)."
-    if "syntax" in msg or "unexpected eof" in msg: return "✍️ **Syntax Error:** Check parentheses or operators."
-    if "overflow" in msg or "too large" in msg: return "💥 **Divergence:** Values exploded to Infinity."
-    
+    if "syntax" in msg: return "✍️ **Syntax Error:** Check parentheses."
+    if "overflow" in msg: return "💥 **Divergence:** Values exploded to Infinity."
     return f"⚠️ **Error:** {raw_error}"
 
 def validate_inputs(func, x0, tol):
@@ -133,21 +129,86 @@ def validate_inputs(func, x0, tol):
 
 st.set_page_config(page_title="Convergence Engine", page_icon="🕸️", layout="wide")
 
+
+
 st.markdown("""
     <style>
-        .stApp { background-color: #0e1117; }
-        .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-        .stat-box { background-color: #1f2937; border: 1px solid #374151; padding: 10px; border-radius: 8px; text-align: center; }
-        .stat-label { color: #9ca3af; font-size: 0.8rem; margin-bottom: 2px; }
-        .stat-value { color: #f3f4f6; font-size: 1.4rem; font-weight: 600; }
-        .success-box { padding: 0.8rem; border-radius: 8px; background: rgba(6,78,59,0.5); border: 1px solid #059669; color: #d1fae5; text-align: center; margin-bottom: 1rem; }
-        .error-box { padding: 0.8rem; border-radius: 8px; background: rgba(127, 29, 29, 0.5); border: 1px solid #dc2626; color: #fca5a5; margin-bottom: 1rem; }
+        /* Global Spacing */
+        .block-container { padding-top: 2rem; padding-bottom: 3rem; }
+
+        /* --- DASHBOARD METRIC CARDS --- */
+        .stat-box { 
+            background-color: var(--secondary-background-color); 
+            border: 1px solid rgba(128, 128, 128, 0.2);
+            padding: 15px; 
+            border-radius: 12px; 
+            text-align: center; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: transform 0.2s ease;
+        }
+        .stat-box:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+        }
+        .stat-label { 
+            color: var(--text-color); 
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.75rem; 
+            margin-bottom: 5px; 
+            font-weight: 600;
+        }
+        .stat-value { 
+            color: var(--primary-color); 
+            font-size: 1.6rem; 
+            font-weight: 700; 
+            font-family: 'Source Code Pro', monospace;
+        }
         
-        /* Landing Page Styles */
-        .landing-card { background-color: #1f2937; padding: 20px; border-radius: 10px; border: 1px solid #374151; height: 100%; }
-        .landing-icon { font-size: 3rem; margin-bottom: 10px; display: block; text-align: center; }
-        .landing-title { font-weight: bold; font-size: 1.2rem; margin-bottom: 5px; text-align: center; color: #f3f4f6; }
-        .landing-text { font-size: 0.9rem; color: #9ca3af; text-align: center; }
+        /* --- ALERTS --- */
+        .success-box { 
+            padding: 1rem; border-radius: 12px; 
+            background-color: rgba(16, 185, 129, 0.15); 
+            border: 1px solid rgba(16, 185, 129, 0.4); 
+            color: #059669; 
+            text-align: center; margin-bottom: 1.5rem; 
+            font-weight: 600;
+        }
+        /* Dark mode adjustment for success text */
+        @media (prefers-color-scheme: dark) {
+            .success-box { color: #34d399; }
+        }
+
+        /* --- LANDING PAGE CARDS --- */
+        .landing-card { 
+            background-color: var(--secondary-background-color); 
+            padding: 25px; 
+            border-radius: 16px; 
+            border: 1px solid rgba(128, 128, 128, 0.15); 
+            height: 100%; 
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+            transition: all 0.3s ease;
+        }
+        .landing-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+            border-color: var(--primary-color);
+        }
+        .landing-icon { 
+            font-size: 3.5rem; 
+            margin-bottom: 15px; 
+            display: block; 
+        }
+        .landing-title { 
+            font-weight: 800; font-size: 1.3rem; margin-bottom: 8px; 
+            color: var(--text-color); 
+        }
+        .landing-text { 
+            font-size: 0.95rem; color: var(--text-color); 
+            opacity: 0.7; line-height: 1.5;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -193,7 +254,6 @@ with st.sidebar:
             try:
                 proc_func = process_math_input(g_func_raw)
                 compile(proc_func, "<string>", "eval") 
-                
                 success, eng_msg = st.session_state.engine.initialize(proc_func, x0_input)
                 if success:
                     st.session_state.initialized = True
@@ -215,8 +275,6 @@ with st.sidebar:
     c1, c2 = st.columns(2)
     step_clicked = c1.button("Step ▶", disabled=not st.session_state.initialized, use_container_width=True)
     auto_clicked = c2.button("Run Auto ⏩", disabled=not st.session_state.initialized, use_container_width=True)
-
-
 
     if st.session_state.initialized:
         tol_val = float(tol_input) if tol_input else 1e-4
@@ -248,7 +306,7 @@ st.title("🕸️ The Convergence Engine")
 
 if st.session_state.initialized:
     if st.session_state.runtime_error:
-        st.markdown(f'<div class="error-box">{st.session_state.runtime_error}</div>', unsafe_allow_html=True)
+        st.error(st.session_state.runtime_error)
 
     if len(st.session_state.history_df) > 0:
         last = st.session_state.history_df.iloc[-1]
@@ -260,16 +318,20 @@ if st.session_state.initialized:
         except: tol_val = 1e-4
         max_iter = int(max_iter_input)
         
+
         if curr_err < tol_val and curr_iter > 0:
-            st.markdown(f'<div class="success-box"><h3>✅ Tolerance Met!</h3>Converged to <b>x = {curr_x:.{decimals}f}</b></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="success-box">✅ Solution Converged<br><span style="font-size:0.9rem; opacity:0.8">Target reached at x = {curr_x:.{decimals}f}</span></div>', unsafe_allow_html=True)
         elif curr_iter >= max_iter:
             st.warning(f"⚠️ Max iterations ({max_iter}) reached without convergence.")
 
+
         k1, k2, k3 = st.columns(3)
         k1.markdown(f'<div class="stat-box"><div class="stat-label">Iteration</div><div class="stat-value">#{curr_iter}</div></div>', unsafe_allow_html=True)
-        k2.markdown(f'<div class="stat-box"><div class="stat-label">Current X</div><div class="stat-value" style="color:#60a5fa">{curr_x:.{decimals}f}</div></div>', unsafe_allow_html=True)
-        color = "#f87171" if curr_err > tol_val else "#4ade80"
-        k3.markdown(f'<div class="stat-box"><div class="stat-label">Relative Error</div><div class="stat-value" style="color:{color}">{curr_err:.{decimals}f}%</div></div>', unsafe_allow_html=True)
+        k2.markdown(f'<div class="stat-box"><div class="stat-label">Current X</div><div class="stat-value">{curr_x:.{decimals}f}</div></div>', unsafe_allow_html=True)
+        
+
+        err_style = "color: #EF553B;" if curr_err > tol_val else "color: #00CC96;"
+        k3.markdown(f'<div class="stat-box"><div class="stat-label">Relative Error</div><div class="stat-value" style="{err_style}">{curr_err:.{decimals}f}%</div></div>', unsafe_allow_html=True)
 
         tab_plot, tab_data = st.tabs(["🕸️ Interactive Plot", "📋 Data Table"])
 
@@ -286,8 +348,14 @@ if st.session_state.initialized:
                 except: y_bg.append(None)
 
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=[-100, 100], y=[-100, 100], mode='lines', name='y=x', line=dict(color='rgba(255,255,255,0.3)', dash='dash'), hoverinfo='skip'))
-            fig.add_trace(go.Scatter(x=x_bg, y=y_bg, mode='lines', name='g(x)', line=dict(color='#22d3ee', width=3)))
+            
+
+            fig.add_trace(go.Scatter(x=[-100, 100], y=[-100, 100], mode='lines', name='y=x', 
+                                     line=dict(color='#7F8C8D', dash='dash', width=2), hoverinfo='skip'))
+            
+
+            fig.add_trace(go.Scatter(x=x_bg, y=y_bg, mode='lines', name='g(x)', 
+                                     line=dict(color='#00B4D8', width=3)))
 
             if show_cobweb and history:
                 cx, cy = [], []
@@ -296,9 +364,14 @@ if st.session_state.initialized:
                 for px, nx in history:
                     cx.extend([px, px, nx, nx])
                     cy.extend([px, nx, nx, nx])
-                fig.add_trace(go.Scatter(x=cx, y=cy, mode='lines+markers', name='Path', line=dict(color='#fbbf24', width=1.5), marker=dict(size=4)))
+                fig.add_trace(go.Scatter(x=cx, y=cy, mode='lines+markers', name='Path', 
+                                         line=dict(color='#F59E0B', width=2), 
+                                         marker=dict(size=5, color='#F59E0B'))) 
 
-            fig.add_trace(go.Scatter(x=[curr_x], y=[curr_x], mode='markers', name='Current', marker=dict(size=12, color='#f472b6', symbol='diamond', line=dict(color='white', width=1))))
+
+            fig.add_trace(go.Scatter(x=[curr_x], y=[curr_x], mode='markers', name='Current', 
+                                     marker=dict(size=14, color='#F72585', symbol='diamond', 
+                                                 line=dict(color='white', width=2))))
 
             if auto_focus:
                 points = [p[0] for p in history] + [p[1] for p in history]
@@ -314,10 +387,33 @@ if st.session_state.initialized:
                 ui_rev = "static_user_view"
 
             fig.update_layout(
-                template="plotly_dark", height=500, dragmode='pan', uirevision=ui_rev,
-                xaxis=dict(title="x", range=[view_min, view_max] if view_min else None, zeroline=True, zerolinewidth=2, zerolinecolor='rgba(255,255,255,0.5)', gridcolor='rgba(255,255,255,0.1)'),
-                yaxis=dict(title="g(x)", range=[view_min, view_max] if view_min else None, zeroline=True, zerolinewidth=2, zerolinecolor='rgba(255,255,255,0.5)', gridcolor='rgba(255,255,255,0.1)'),
-                margin=dict(l=20, r=20, t=30, b=20), legend=dict(x=0.01, y=0.99, bgcolor="rgba(0,0,0,0.5)")
+                height=500, 
+                dragmode='pan', 
+                uirevision=ui_rev,
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(
+                    title="x", 
+                    range=[view_min, view_max] if view_min else None, 
+                    zeroline=True, zerolinewidth=1.5, zerolinecolor='#9CA3AF',
+                    gridcolor='rgba(128, 128, 128, 0.1)',
+                    showgrid=True
+                ),
+                yaxis=dict(
+                    title="g(x)", 
+                    range=[view_min, view_max] if view_min else None, 
+                    zeroline=True, zerolinewidth=1.5, zerolinecolor='#9CA3AF',
+                    gridcolor='rgba(128, 128, 128, 0.1)',
+                    showgrid=True
+                ),
+                margin=dict(l=20, r=20, t=30, b=20), 
+                legend=dict(
+                    x=0.01, y=0.99,
+                    xanchor="left", yanchor="top",
+                    bgcolor="rgba(128, 128, 128, 0.2)",
+                    bordercolor="rgba(128, 128, 128, 0.3)",
+                    borderwidth=1
+                )
             )
             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
@@ -327,7 +423,7 @@ if st.session_state.initialized:
                     e = float(row['Error (%)'])
                     i = int(row['Iteration'])
                     if e < tol_val and i > 0:
-                        return ['background-color: rgba(6, 78, 59, 0.5)'] * len(row)
+                        return ['background-color: rgba(52, 211, 153, 0.25)'] * len(row)
                 except: pass
                 return [''] * len(row)
 
@@ -336,17 +432,23 @@ if st.session_state.initialized:
                 "Current X": f"{{:.{decimals}f}}",
                 "Error (%)": "{:.8f}"
             }
+            
             styled_df = st.session_state.history_df.style.apply(highlight_success, axis=1).format(fmt_dict)
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+            
+            st.dataframe(
+                styled_df, 
+                use_container_width=True, 
+                hide_index=True
+            )
 
 else:
     st.markdown("### 👋 Welcome! Ready to converge?")
-    st.markdown("Use the sidebar 👈 to configure your function, then click **Initialize** to see the magic happen.")
+    st.markdown("Use the sidebar 👈 to configure your function, then click **Initialize**.")
     
     w1, w2, w3 = st.columns(3)
     with w1:
-        st.markdown('<div class="landing-card"><span class="landing-icon">📈</span><div class="landing-title">Visualize</div><div class="landing-text">See fixed-point iteration in action with interactive Cobweb plots.</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="landing-card"><span class="landing-icon">📈</span><div class="landing-title">Visualize</div><div class="landing-text">Explore fixed-point iteration with real-time, interactive Cobweb plots.</div></div>', unsafe_allow_html=True)
     with w2:
-        st.markdown('<div class="landing-card"><span class="landing-icon">🔬</span><div class="landing-title">Analyze</div><div class="landing-text">Track relative error and convergence speed in real-time.</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="landing-card"><span class="landing-icon">🔬</span><div class="landing-title">Analyze</div><div class="landing-text">Track relative error and convergence speed with precision.</div></div>', unsafe_allow_html=True)
     with w3:
-        st.markdown('<div class="landing-card"><span class="landing-icon">🧪</span><div class="landing-title">Experiment</div><div class="landing-text">Test different functions, initial guesses, and tolerances safely.</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="landing-card"><span class="landing-icon">🧪</span><div class="landing-title">Experiment</div><div class="landing-text">Test functions, initial guesses, and tolerances in a safe sandbox.</div></div>', unsafe_allow_html=True)
