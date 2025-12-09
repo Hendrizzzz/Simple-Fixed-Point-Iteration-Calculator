@@ -2,347 +2,351 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import streamlit.components.v1 as components
-import re  
-from convergence_engine import IterationEngine
+import re
+import math
 
-def get_friendly_error_message(raw_error):
-    """
-    Translates raw Python exceptions into helpful, non-technical user feedback.
-    """
-    msg = str(raw_error).lower()
-    
-    if "division by zero" in msg:
-        return "🚫 **Math Error:** Division by zero occurred. The value of 'x' hit 0."
-    
-    if "domain" in msg or "complex" in msg or "negative" in msg or "nan" in msg:
-        return "⛔ **Domain Error:** The calculation resulted in an impossible number (e.g., Square Root of a negative number). Check your Initial Guess."
-    
-    if "name" in msg and "is not defined" in msg:
-        match = re.search(r"name '(.+?)' is not defined", str(raw_error))
-        var_name = match.group(1) if match else "unknown"
-        return f"🤔 **Unknown Word:** The app doesn't understand **'{var_name}'**. Please use standard math (e.g., `cos`, `sqrt`) and use `*` for multiplication."
-    
-    if "overflow" in msg or "too large" in msg or "infinity" in msg or "out of range" in msg:
-        return "💥 **Number Explosion:** The numbers became too huge to calculate (Infinity). The function is diverging rapidly."
-    
-    if "syntax" in msg or "unexpected eof" in msg or "parsing" in msg or "invalid syntax" in msg:
-        return "✍️ **Syntax Error:** Please check your equation. You might have missing parentheses or an incomplete expression."
 
-    return f"⚠️ **Calculation Failed:** {raw_error}"
+class IterationEngine:
+    def __init__(self):
+        self.expression = ""
+        self.history = [] 
+        self.previous_x = 0.0
+        self.g_str = ""
+
+    def initialize(self, func_str, x0):
+        self.g_str = func_str
+        self.history = []
+        try:
+            self.previous_x = float(x0)
+            val = self.evaluate_g(self.previous_x)
+            if np.isnan(val) or np.iscomplex(val):
+                return False, "DomainError: Initial guess results in an undefined value (e.g. sqrt of negative)."
+            return True, ""
+        except Exception as e:
+            return False, e
+
+    def evaluate_g(self, x):
+        safe_dict = {
+            "x": x,
+            "np": np,
+            "cos": np.cos, "sin": np.sin, "tan": np.tan,
+            "sqrt": np.sqrt, "log": np.log, "exp": np.exp,
+            "abs": np.abs, "pi": np.pi, "e": np.e
+        }
+        
+        with np.errstate(all='ignore'):
+            try:
+                result = eval(self.g_str, {"__builtins__": {}}, safe_dict)
+                return result
+            except NameError as e:
+                raise NameError(e)
+            except Exception as e:
+                raise e
+
+
+
+    def step(self):
+        try:
+            x_in = self.previous_x
+            
+            if abs(x_in) > 1e10:
+                return {"error_msg": "OverflowError: Values are too large (Divergence)"}
+
+            x_out = self.evaluate_g(x_in)
+            
+            if np.isnan(x_out) or np.iscomplex(x_out):
+                return {"error_msg": "DomainError: Result is not a real number (e.g. sqrt(-5))."}
+
+            if x_out == 0:
+                error_pct = 0.0 if x_in == 0 else 100.0
+            else:
+                error_pct = abs((x_out - x_in) / x_out) * 100
+            
+            self.history.append((x_in, x_out))
+            self.previous_x = x_out
+            
+            return {
+                "step": len(self.history),
+                "x_in": x_in,
+                "x_out": x_out,
+                "error": error_pct
+            }
+        except Exception as e:
+            return {"error_msg": str(e)}
+
+    def run_auto(self, tolerance, max_iter):
+        results = []
+        for _ in range(max_iter):
+            res = self.step()
+            if "error_msg" in res:
+                results.append(res)
+                break
+            results.append(res)
+            if res["error"] < tolerance and res["step"] > 0:
+                break
+        return results
+
+    def g_func(self, val):
+        return self.evaluate_g(val)
+
+
+
 
 def process_math_input(user_input):
-    """
-    Translates 'Human Math' to 'Python/Numpy Math' safely.
-    """
     if not user_input: return ""
     expr = user_input.strip().replace("^", "**")
-    
     mappings = [
         (r'\bcos\b', 'np.cos'), (r'\bsin\b', 'np.sin'), (r'\btan\b', 'np.tan'),
         (r'\bsqrt\b', 'np.sqrt'), (r'\bexp\b', 'np.exp'), (r'\blog\b', 'np.log'),
         (r'\bpi\b', 'np.pi'), (r'\be\b', 'np.e'), (r'\babs\b', 'np.abs')
     ]
-    
     for pattern, replacement in mappings:
         expr = re.sub(fr'(?<!np\.)' + pattern, replacement, expr)
-        
     return expr
 
-st.set_page_config(
-    page_title="The Convergence Engine",
-    page_icon="🕸️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+def get_friendly_error_message(raw_error):
+    msg = str(raw_error).lower()
+    
+    if "import" in msg or "module" in msg:
+        return "🚫 **Security/Syntax Error:** Import statements or external modules are not allowed."
+
+    if "division by zero" in msg: return "🚫 **Math Error:** Division by zero."
+    if "domain" in msg or "complex" in msg or "nan" in msg: return "⛔ **Domain Error:** Result is undefined (e.g. Square Root of a negative number)."
+    if "name" in msg and "is not defined" in msg: return "🤔 **Unknown Syntax:** Use standard math (e.g. `cos(x)`)."
+    if "syntax" in msg or "unexpected eof" in msg: return "✍️ **Syntax Error:** Check parentheses or operators."
+    if "overflow" in msg or "too large" in msg: return "💥 **Divergence:** Values exploded to Infinity."
+    
+    return f"⚠️ **Error:** {raw_error}"
+
+def validate_inputs(func, x0, tol):
+    if not func or not func.strip(): return False, "Function input cannot be empty."
+    try: float(x0)
+    except: return False, "Initial Guess must be a valid number."
+    try: 
+        if float(tol) <= 0: return False, "Tolerance must be positive."
+    except: return False, "Tolerance must be a valid number."
+    return True, ""
+
+
+
+
+
+st.set_page_config(page_title="Convergence Engine", page_icon="🕸️", layout="wide")
 
 st.markdown("""
     <style>
-        .stApp { background_color: #0e1117; }
-        .metric-card { background-color: #262730; padding: 15px; border-radius: 10px; text_align: center; }
-        .success-box { padding: 1rem; border-radius: 0.5rem; background-color: rgba(0, 255, 0, 0.1); border: 1px solid #00ff00; margin-bottom: 1rem; }
-        div[data-testid="stToast"] { padding: 1rem; }
+        .stApp { background-color: #0e1117; }
+        .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
+        .stat-box { background-color: #1f2937; border: 1px solid #374151; padding: 10px; border-radius: 8px; text-align: center; }
+        .stat-label { color: #9ca3af; font-size: 0.8rem; margin-bottom: 2px; }
+        .stat-value { color: #f3f4f6; font-size: 1.4rem; font-weight: 600; }
+        .success-box { padding: 0.8rem; border-radius: 8px; background: rgba(6,78,59,0.5); border: 1px solid #059669; color: #d1fae5; text-align: center; margin-bottom: 1rem; }
+        .error-box { padding: 0.8rem; border-radius: 8px; background: rgba(127, 29, 29, 0.5); border: 1px solid #dc2626; color: #fca5a5; margin-bottom: 1rem; }
+        
+        /* Landing Page Styles */
+        .landing-card { background-color: #1f2937; padding: 20px; border-radius: 10px; border: 1px solid #374151; height: 100%; }
+        .landing-icon { font-size: 3rem; margin-bottom: 10px; display: block; text-align: center; }
+        .landing-title { font-weight: bold; font-size: 1.2rem; margin-bottom: 5px; text-align: center; color: #f3f4f6; }
+        .landing-text { font-size: 0.9rem; color: #9ca3af; text-align: center; }
     </style>
 """, unsafe_allow_html=True)
 
-if 'engine' not in st.session_state:
-    st.session_state.engine = IterationEngine()
-if 'initialized' not in st.session_state:
-    st.session_state.initialized = False
-if 'history_df' not in st.session_state:
-    st.session_state.history_df = pd.DataFrame(columns=["Iteration", "Previous X", "Current X", "Error (%)"])
+if 'engine' not in st.session_state: st.session_state.engine = IterationEngine()
+if 'initialized' not in st.session_state: st.session_state.initialized = False
+if 'history_df' not in st.session_state: st.session_state.history_df = pd.DataFrame(columns=["Iteration", "Previous X", "Current X", "Error (%)"])
+if 'runtime_error' not in st.session_state: st.session_state.runtime_error = None
 
 with st.sidebar:
-    st.title("Configuration")
-    
-    g_func_raw = st.text_input(
-        "Function g(x):", 
-        value="cos(x)", 
-        help="Enter the Right-Hand Side (RHS) expression."
-    )
-    
-    x0_input = st.text_input("Initial Guess x0:", value="0.5")
+    st.header("⚙️ Configuration")
+    g_func_raw = st.text_input("Function g(x):", value="cos(x)")
+    x0_input = st.text_input("Initial Guess ($x_0$):", value="0.5")
     tol_input = st.text_input("Tolerance:", value="0.0001")
-    max_iter_input = st.number_input("Max Iterations:", value=100, min_value=1, step=1)
-    decimals = st.slider("Decimal Places:", min_value=0, max_value=20, value=6)
-
-    submitted = st.button("Initialize / Reset", type="primary", use_container_width=True)
     
-    with st.expander("📝 Math Syntax Guide"):
+    st.markdown("---")
+    st.subheader("👁️ Visuals")
+    show_cobweb = st.toggle("Show Cobweb Path", value=True)
+    auto_focus = st.toggle("Auto-Scale on Step", value=True, help="ON: Zooms to new points automatically.\nOFF: Maintains your manual scroll/zoom level.")
+    
+    with st.expander("📚 Math Syntax Guide"):
         st.markdown("""
-        - **Power:** `x^2` or `x**2`
-        - **Trig:** `cos(x)`, `sin(x)`, `tan(x)`
-        - **Roots:** `sqrt(x)`
-        - **Logs:** `log(x)` (natural), `exp(x)`
-        - **Constants:** `pi`, `e`
+        * **Power:** `x^2` or `x**2`
+        * **Trig:** `cos(x)`, `sin(x)`, `tan(x)`
+        * **Roots:** `sqrt(x)`
+        * **Logs:** `log(x)` (natural), `exp(x)`
+        * **Constants:** `pi`, `e`
         """)
 
-    if submitted:
-        if not g_func_raw.strip():
-            st.error("⚠️ **Missing Input:** Please enter a function (e.g., `cos(x)`).")
+    with st.expander("🛠️ Limits"):
+        max_iter_input = st.number_input("Max Iterations:", value=100, step=10)
+        decimals = st.slider("Decimals:", 0, 15, 6)
+
+    col_btn1, col_btn2 = st.columns(2)
+    
+    if col_btn1.button("Initialize", type="primary", use_container_width=True):
+        st.session_state.runtime_error = None
+        is_valid, err_msg = validate_inputs(g_func_raw, x0_input, tol_input)
+        
+        if not is_valid:
+            st.error(err_msg)
             st.session_state.initialized = False
         else:
             try:
-                float(x0_input) 
-                valid_number = True
-            except ValueError:
-                st.error("🔢 **Input Error:** Initial Guess must be a valid number.")
-                valid_number = False
-                st.session_state.initialized = False
-
-            if valid_number:
-                processed_func = process_math_input(g_func_raw)
-                success, msg = st.session_state.engine.initialize(processed_func, x0_input)
+                proc_func = process_math_input(g_func_raw)
+                compile(proc_func, "<string>", "eval") 
                 
+                success, eng_msg = st.session_state.engine.initialize(proc_func, x0_input)
                 if success:
                     st.session_state.initialized = True
-                    st.session_state.history_df = pd.DataFrame([{
-                        "Iteration": 0,
-                        "Previous X": st.session_state.engine.previous_x,
-                        "Current X": st.session_state.engine.previous_x,
-                        "Error (%)": 0.0
-                    }])
-                    st.toast(f"System Initialized: x₀ = {st.session_state.engine.previous_x}", icon="✅")
+                    st.session_state.history_df = pd.DataFrame([{"Iteration": 0, "Previous X": float(x0_input), "Current X": float(x0_input), "Error (%)": 0.0}])
+                    st.toast(f"System Ready: x₀ = {x0_input}")
                 else:
-                    st.error(get_friendly_error_message(msg))
+                    st.error(get_friendly_error_message(eng_msg))
                     st.session_state.initialized = False
+            except Exception as e:
+                st.error(get_friendly_error_message(e))
+                st.session_state.initialized = False
+
+    if col_btn2.button("Reset", use_container_width=True):
+        st.session_state.history_df = pd.DataFrame(columns=["Iteration", "Previous X", "Current X", "Error (%)"])
+        st.session_state.runtime_error = None
+        st.session_state.initialized = False
 
     st.markdown("---")
-    
-    col_step, col_auto = st.columns(2)
-    
-    with col_step:
-        step_clicked = st.button("Next Step", disabled=not st.session_state.initialized, use_container_width=True)
-    with col_auto:
-        auto_clicked = st.button("Run Auto", disabled=not st.session_state.initialized, use_container_width=True)
+    c1, c2 = st.columns(2)
+    step_clicked = c1.button("Step ▶", disabled=not st.session_state.initialized, use_container_width=True)
+    auto_clicked = c2.button("Run Auto ⏩", disabled=not st.session_state.initialized, use_container_width=True)
 
-    if step_clicked:
-         result = st.session_state.engine.step()
-         if result and "error" in result and isinstance(result["error"], str):
-             st.error(get_friendly_error_message(result["error"]))
-         elif result:
-             new_row = {
-                 "Iteration": int(result["step"]),
-                 "Previous X": result["x_in"],
-                 "Current X": result["x_out"],
-                 "Error (%)": result["error"]
-             }
-             st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame([new_row])], ignore_index=True)
 
-    if auto_clicked:
-        try:
-            tol_val = float(tol_input)
+
+    if st.session_state.initialized:
+        tol_val = float(tol_input) if tol_input else 1e-4
+        
+        if step_clicked:
+            res = st.session_state.engine.step()
+            if "error_msg" in res:
+                st.session_state.runtime_error = get_friendly_error_message(res["error_msg"])
+            else:
+                st.session_state.runtime_error = None
+                new_row = {"Iteration": int(res["step"]), "Previous X": res["x_in"], "Current X": res["x_out"], "Error (%)": res["error"]}
+                st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame([new_row])], ignore_index=True)
+
+        if auto_clicked:
             results = st.session_state.engine.run_auto(tol_val, int(max_iter_input))
+            new_rows = []
+            st.session_state.runtime_error = None
+            for res in results:
+                if "error_msg" in res:
+                    st.session_state.runtime_error = get_friendly_error_message(res["error_msg"])
+                    break
+                new_rows.append({"Iteration": int(res["step"]), "Previous X": res["x_in"], "Current X": res["x_out"], "Error (%)": res["error"]})
             
-            if results:
-                new_rows = []
-                for res in results:
-                    if "error" in res and isinstance(res["error"], str):
-                        st.error(get_friendly_error_message(res["error"]))
-                        break 
-                    
-                    if "step" in res:
-                        new_rows.append({
-                            "Iteration": int(res["step"]),
-                            "Previous X": res["x_in"],
-                            "Current X": res["x_out"],
-                            "Error (%)": res["error"]
-                        })
-                
-                if new_rows:
-                    st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame(new_rows)], ignore_index=True)
-        except ValueError:
-            st.error("🔢 **Input Error:** Invalid tolerance value.")
-        except Exception as e:
-            st.error(get_friendly_error_message(e))
+            if new_rows:
+                st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame(new_rows)], ignore_index=True)
+
+st.title("🕸️ The Convergence Engine")
 
 
-st.title("The Convergence Engine")
+if st.session_state.initialized:
+    if st.session_state.runtime_error:
+        st.markdown(f'<div class="error-box">{st.session_state.runtime_error}</div>', unsafe_allow_html=True)
 
-if not st.session_state.initialized:
-    st.info("👈 Please enter a function (e.g., `cos(x)`) and initialize the system.")
-else:
     if len(st.session_state.history_df) > 0:
-        last_row = st.session_state.history_df.iloc[-1]
-        curr_x = last_row["Current X"]
-        curr_err = last_row["Error (%)"]
-        curr_iter = int(last_row["Iteration"])
+        last = st.session_state.history_df.iloc[-1]
+        curr_x = last["Current X"]
+        curr_err = last["Error (%)"]
+        curr_iter = int(last["Iteration"])
         
-        try:
-            tol_val = float(tol_input)
-            is_converged = curr_err < tol_val and curr_iter > 0
-        except:
-            tol_val = 0.0001
-            is_converged = False
-
-        if is_converged:
-            st.markdown(f"""
-                <div class="success-box">
-                    <h3>✅ Tolerance Met!</h3>
-                    <p>The solution converged to <b>x = {curr_x:.{decimals}f}</b> at <b>Iteration {curr_iter}</b>.</p>
-                </div>
-            """, unsafe_allow_html=True)
-
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Current Iteration", f"#{curr_iter}")
-        with c2:
-            st.metric("Current Value (x)", f"{curr_x:.{decimals}f}")
-        with c3:
-            st.metric("Relative Error", f"{curr_err:.{decimals}f}%", delta_color="inverse")
-
-    tab1, tab2 = st.tabs(["Interactive Visualization", "Data Table"])
-
-    with tab1:
-        history = st.session_state.engine.history
+        try: tol_val = float(tol_input)
+        except: tol_val = 1e-4
+        max_iter = int(max_iter_input)
         
-        x_points = [p[0] for p in history] + [p[1] for p in history]
-        if not x_points:
-            x_min, x_max = -1, 1
-        else:
-            x_min, x_max = min(x_points), max(x_points)
-        
-        span = x_max - x_min
-        if span == 0: span = 1
-        plot_min = x_min - (span * 0.2)
-        plot_max = x_max + (span * 0.2)
+        if curr_err < tol_val and curr_iter > 0:
+            st.markdown(f'<div class="success-box"><h3>✅ Tolerance Met!</h3>Converged to <b>x = {curr_x:.{decimals}f}</b></div>', unsafe_allow_html=True)
+        elif curr_iter >= max_iter:
+            st.warning(f"⚠️ Max iterations ({max_iter}) reached without convergence.")
 
-        if plot_min < -1e5: plot_min = -1e5
-        if plot_max > 1e5: plot_max = 1e5
+        k1, k2, k3 = st.columns(3)
+        k1.markdown(f'<div class="stat-box"><div class="stat-label">Iteration</div><div class="stat-value">#{curr_iter}</div></div>', unsafe_allow_html=True)
+        k2.markdown(f'<div class="stat-box"><div class="stat-label">Current X</div><div class="stat-value" style="color:#60a5fa">{curr_x:.{decimals}f}</div></div>', unsafe_allow_html=True)
+        color = "#f87171" if curr_err > tol_val else "#4ade80"
+        k3.markdown(f'<div class="stat-box"><div class="stat-label">Relative Error</div><div class="stat-value" style="color:{color}">{curr_err:.{decimals}f}%</div></div>', unsafe_allow_html=True)
 
-        x_space = np.linspace(plot_min, plot_max, 500)
-        y_identity = x_space
-        
-        try:
-            y_curve = []
-            for val in x_space:
+        tab_plot, tab_data = st.tabs(["🕸️ Interactive Plot", "📋 Data Table"])
+
+        with tab_plot:
+            history = st.session_state.engine.history
+            
+            x_bg = np.linspace(-100, 100, 2000)
+            y_bg = []
+            for v in x_bg:
                 try:
-                    res = st.session_state.engine.g_func(val)
-                    if np.iscomplex(res) or np.isnan(res):
-                        y_curve.append(None) 
-                    else:
-                        y_curve.append(res)
-                except:
-                    y_curve.append(None)
-        except Exception:
-            y_curve = x_space * 0 
+                    r = st.session_state.engine.g_func(v)
+                    if np.isnan(r) or np.iscomplex(r) or abs(r) > 1000: y_bg.append(None)
+                    else: y_bg.append(r)
+                except: y_bg.append(None)
 
-        cobweb_x = []
-        cobweb_y = []
-        if len(history) > 0:
-            start_x = history[0][0]
-            cobweb_x.append(start_x)
-            cobweb_y.append(start_x)
-            for i, (prev_x, curr_x) in enumerate(history):
-                cobweb_x.append(prev_x)
-                cobweb_y.append(curr_x)
-                cobweb_x.append(curr_x)
-                cobweb_y.append(curr_x)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=[-100, 100], y=[-100, 100], mode='lines', name='y=x', line=dict(color='rgba(255,255,255,0.3)', dash='dash'), hoverinfo='skip'))
+            fig.add_trace(go.Scatter(x=x_bg, y=y_bg, mode='lines', name='g(x)', line=dict(color='#22d3ee', width=3)))
 
-        fig = go.Figure()
+            if show_cobweb and history:
+                cx, cy = [], []
+                sx = history[0][0]
+                cx.append(sx); cy.append(sx)
+                for px, nx in history:
+                    cx.extend([px, px, nx, nx])
+                    cy.extend([px, nx, nx, nx])
+                fig.add_trace(go.Scatter(x=cx, y=cy, mode='lines+markers', name='Path', line=dict(color='#fbbf24', width=1.5), marker=dict(size=4)))
 
-        fig.add_trace(go.Scatter(
-            x=x_space, y=y_identity, mode='lines', name='y = x',
-            line=dict(color='#00ff00', width=1, dash='dash')
-        ))
+            fig.add_trace(go.Scatter(x=[curr_x], y=[curr_x], mode='markers', name='Current', marker=dict(size=12, color='#f472b6', symbol='diamond', line=dict(color='white', width=1))))
 
-        display_func_name = g_func_raw if 'g_func_raw' in locals() else st.session_state.engine.g_str
-        fig.add_trace(go.Scatter(
-            x=x_space, y=y_curve, mode='lines', name=f'g(x) = {display_func_name}',
-            line=dict(color='#00ffff', width=2)
-        ))
+            if auto_focus:
+                points = [p[0] for p in history] + [p[1] for p in history]
+                if not points: points = [float(x0_input)]
+                x_min_dat, x_max_dat = min(points), max(points)
+                x_min_dat = max(x_min_dat, -1e5); x_max_dat = min(x_max_dat, 1e5)
+                span = x_max_dat - x_min_dat
+                if span == 0: span = 2.0
+                view_min = x_min_dat - (span * 0.25); view_max = x_max_dat + (span * 0.25)
+                ui_rev = f"step_{curr_iter}"
+            else:
+                view_min, view_max = None, None
+                ui_rev = "static_user_view"
 
-        fig.add_trace(go.Scatter(
-            x=cobweb_x, y=cobweb_y, mode='lines+markers', name='Iteration Path',
-            line=dict(color='#ffff00', width=1), marker=dict(size=4),
-            hovertemplate='x: %{x:.6f}<br>y: %{y:.6f}'
-        ))
+            fig.update_layout(
+                template="plotly_dark", height=500, dragmode='pan', uirevision=ui_rev,
+                xaxis=dict(title="x", range=[view_min, view_max] if view_min else None, zeroline=True, zerolinewidth=2, zerolinecolor='rgba(255,255,255,0.5)', gridcolor='rgba(255,255,255,0.1)'),
+                yaxis=dict(title="g(x)", range=[view_min, view_max] if view_min else None, zeroline=True, zerolinewidth=2, zerolinecolor='rgba(255,255,255,0.5)', gridcolor='rgba(255,255,255,0.1)'),
+                margin=dict(l=20, r=20, t=30, b=20), legend=dict(x=0.01, y=0.99, bgcolor="rgba(0,0,0,0.5)")
+            )
+            st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
-        if len(history) > 0:
-            fig.add_trace(go.Scatter(
-                x=[curr_x], y=[curr_x], mode='markers', name='Current x',
-                marker=dict(size=10, color='#ff00ff', symbol='circle'), hoverinfo='skip'
-            ))
+        with tab_data:
+            def highlight_success(row):
+                try:
+                    e = float(row['Error (%)'])
+                    i = int(row['Iteration'])
+                    if e < tol_val and i > 0:
+                        return ['background-color: rgba(6, 78, 59, 0.5)'] * len(row)
+                except: pass
+                return [''] * len(row)
 
-        fig.update_layout(
-            title="Interactive Cobweb Plot",
-            dragmode='pan',
-            xaxis_title="x", yaxis_title="g(x)",
-            template="plotly_dark",
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            height=600,
-            xaxis=dict(
-                range=[plot_min, plot_max], zeroline=True, zerolinewidth=2,
-                zerolinecolor='rgba(255,255,255,0.6)', showgrid=True,
-                gridcolor='rgba(255,255,255,0.1)', showspikes=True,
-                spikemode='across', spikesnap='cursor', spikethickness=1,
-                spikecolor='rgba(255,255,255,0.3)'
-            ),
-            yaxis=dict(
-                range=[plot_min, plot_max], zeroline=True, zerolinewidth=2,
-                zerolinecolor='rgba(255,255,255,0.6)', showgrid=True,
-                gridcolor='rgba(255,255,255,0.1)', showspikes=True,
-                spikemode='across', spikesnap='cursor', spikethickness=1,
-                spikecolor='rgba(255,255,255,0.3)'
-            ),
-            legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(0,0,0,0.5)"),
-            hovermode="closest"
-        )
-
-        config = {
-            'scrollZoom': True, 
-            'displayModeBar': True,
-            'displaylogo': False,
-            'modeBarButtonsToRemove': ['lasso2d', 'select2d']
-        }
-
-        st.plotly_chart(fig, use_container_width=True, config=config)
-
-    with tab2:
-        df_display = st.session_state.history_df.copy()
-        
-        def highlight_converged_row(row):
-            try:
-                err = float(row['Error (%)'])
-                it = int(row['Iteration'])
-                if err < tol_val and it > 0:
-                    return ['background-color: rgba(30, 200, 30, 0.2); color: white'] * len(row)
-            except:
-                pass
-            return [''] * len(row)
-
-        styled_df = df_display.style.apply(highlight_converged_row, axis=1)
-        fmt = f"%.{decimals}f"
-
-        st.dataframe(
-            styled_df, 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "Iteration": st.column_config.NumberColumn(format="%d"),
-                "Previous X": st.column_config.NumberColumn(format=fmt),
-                "Current X": st.column_config.NumberColumn(format=fmt),
-                "Error (%)": st.column_config.NumberColumn(format=fmt),
+            fmt_dict = {
+                "Previous X": f"{{:.{decimals}f}}",
+                "Current X": f"{{:.{decimals}f}}",
+                "Error (%)": "{:.8f}"
             }
-        )
+            styled_df = st.session_state.history_df.style.apply(highlight_success, axis=1).format(fmt_dict)
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+else:
+    st.markdown("### 👋 Welcome! Ready to converge?")
+    st.markdown("Use the sidebar 👈 to configure your function, then click **Initialize** to see the magic happen.")
+    
+    w1, w2, w3 = st.columns(3)
+    with w1:
+        st.markdown('<div class="landing-card"><span class="landing-icon">📈</span><div class="landing-title">Visualize</div><div class="landing-text">See fixed-point iteration in action with interactive Cobweb plots.</div></div>', unsafe_allow_html=True)
+    with w2:
+        st.markdown('<div class="landing-card"><span class="landing-icon">🔬</span><div class="landing-title">Analyze</div><div class="landing-text">Track relative error and convergence speed in real-time.</div></div>', unsafe_allow_html=True)
+    with w3:
+        st.markdown('<div class="landing-card"><span class="landing-icon">🧪</span><div class="landing-title">Experiment</div><div class="landing-text">Test different functions, initial guesses, and tolerances safely.</div></div>', unsafe_allow_html=True)
