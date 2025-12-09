@@ -286,6 +286,7 @@ else:
 
         fig.update_layout(
             title="Interactive Cobweb Plot",
+            dragmode='pan',
             xaxis_title="x", yaxis_title="g(x)",
             template="plotly_dark",
             paper_bgcolor='rgba(0,0,0,0)',
