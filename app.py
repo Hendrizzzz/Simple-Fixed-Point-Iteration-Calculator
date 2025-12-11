@@ -231,10 +231,11 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("👁️ Visuals")
     show_cobweb = st.toggle("Show Cobweb Path", value=True)
-    auto_focus = st.toggle("Auto-Scale on Step", value=True, help="ON: Zooms to new points automatically (Recommended).\nOFF: Default View.")
-    
+    auto_focus = st.toggle("Camera: Follow Steps", value=True, help="ON: Zooms to recent steps.\nOFF: Static view based on initial guess.")
+
     with st.expander("📚 Math Syntax Guide"):
         st.markdown("""
+        ℹ️ Trigonometric functions assume Radians.
         * **Power:** `x^2` or `x**2`
         * **Trig:** `cos(x)`, `sin(x)`, `tan(x)`
         * **Roots:** `sqrt(x)`
@@ -343,22 +344,43 @@ if st.session_state.initialized:
         with tab_plot:
             history = st.session_state.engine.history
             
-            x_bg = np.linspace(-100, 100, 2000)
+            try: x_start = float(x0_input)
+            except: x_start = 0.0
+
+            try:
+                x_next_pred = st.session_state.engine.g_func(x_start)
+                if np.isnan(x_next_pred) or abs(x_next_pred) > 1e10: 
+                    x_next_pred = x_start 
+            except:
+                x_next_pred = x_start
+
+            static_points = [x_start, x_next_pred]
+            sp_min, sp_max = min(static_points), max(static_points)
+            sp_span = sp_max - sp_min
+            
+            if sp_span == 0: 
+                sp_span = abs(sp_min) * 0.5 if sp_min != 0 else 2.0
+            
+            sp_buff = sp_span * 0.5
+            static_range = [sp_min - sp_buff, sp_max + sp_buff]
+
+            bg_limit = max(abs(sp_max), abs(sp_min), sp_span) * 50
+            if bg_limit == 0: bg_limit = 100 
+
+            x_bg = np.linspace(-bg_limit, bg_limit, 5000) 
             y_bg = []
             for v in x_bg:
                 try:
                     r = st.session_state.engine.g_func(v)
-                    if np.isnan(r) or np.iscomplex(r) or abs(r) > 1000: y_bg.append(None)
+                    if np.isnan(r) or np.iscomplex(r): y_bg.append(None)
                     else: y_bg.append(r)
                 except: y_bg.append(None)
 
             fig = go.Figure()
-            
 
-            fig.add_trace(go.Scatter(x=[-100, 100], y=[-100, 100], mode='lines', name='y=x', 
+            fig.add_trace(go.Scatter(x=[-bg_limit, bg_limit], y=[-bg_limit, bg_limit], mode='lines', name='y=x', 
                                      line=dict(color='#7F8C8D', dash='dash', width=2), hoverinfo='skip'))
             
-
             fig.add_trace(go.Scatter(x=x_bg, y=y_bg, mode='lines', name='g(x)', 
                                      line=dict(color='#00B4D8', width=3)))
 
@@ -373,40 +395,51 @@ if st.session_state.initialized:
                                          line=dict(color='#F59E0B', width=2), 
                                          marker=dict(size=5, color='#F59E0B'))) 
 
-
             fig.add_trace(go.Scatter(x=[curr_x], y=[curr_x], mode='markers', name='Current', 
                                      marker=dict(size=14, color='#F72585', symbol='diamond', 
                                                  line=dict(color='white', width=2))))
 
+            follow_points = []
+            if history:
+                recent = history[-5:] 
+                follow_points += [p[0] for p in recent] + [p[1] for p in recent]
+            follow_points.append(curr_x)
+            if not history: follow_points.append(x_start)
+            
+            follow_points = [p for p in follow_points if -1e10 < p < 1e10]
+            if not follow_points: follow_points = [x_start]
+            
+            fp_min, fp_max = min(follow_points), max(follow_points)
+            fp_span = fp_max - fp_min
+            if fp_span == 0: fp_span = abs(fp_min)*0.4 if fp_min!=0 else 1.0
+            fp_buff = fp_span * 0.25
+            smart_range = [fp_min - fp_buff, fp_max + fp_buff]
+
             if auto_focus:
-                points = [p[0] for p in history] + [p[1] for p in history]
-                if not points: points = [float(x0_input)]
-                x_min_dat, x_max_dat = min(points), max(points)
-                x_min_dat = max(x_min_dat, -1e5); x_max_dat = min(x_max_dat, 1e5)
-                span = x_max_dat - x_min_dat
-                if span == 0: span = 2.0
-                view_min = x_min_dat - (span * 0.25); view_max = x_max_dat + (span * 0.25)
-                ui_rev = f"step_{curr_iter}"
+                final_x = smart_range
+                final_y = smart_range
+                ui_rev = f"step_{curr_iter}" 
             else:
-                view_min, view_max = None, None
-                ui_rev = "static_user_view"
+                final_x = static_range
+                final_y = static_range
+                ui_rev = "constant_view"
 
             fig.update_layout(
                 height=500, 
-                dragmode='pan', 
+                dragmode='pan',
                 uirevision=ui_rev,
                 paper_bgcolor='rgba(0,0,0,0)', 
                 plot_bgcolor='rgba(0,0,0,0)',
                 xaxis=dict(
                     title="x", 
-                    range=[view_min, view_max] if view_min else None, 
+                    range=final_x,
                     zeroline=True, zerolinewidth=1.5, zerolinecolor='#9CA3AF',
                     gridcolor='rgba(128, 128, 128, 0.1)',
                     showgrid=True
                 ),
                 yaxis=dict(
                     title="g(x)", 
-                    range=[view_min, view_max] if view_min else None, 
+                    range=final_y,
                     zeroline=True, zerolinewidth=1.5, zerolinecolor='#9CA3AF',
                     gridcolor='rgba(128, 128, 128, 0.1)',
                     showgrid=True
