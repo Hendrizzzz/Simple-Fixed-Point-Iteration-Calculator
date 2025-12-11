@@ -95,6 +95,11 @@ class IterationEngine:
 def process_math_input(user_input):
     if not user_input: return ""
     expr = user_input.strip().replace("^", "**")
+    
+    expr = re.sub(r'(\d)\s*(x)', r'\1*\2', expr)
+    expr = re.sub(r'(\d)\s*\(', r'\1*(', expr)
+    expr = re.sub(r'\)\s*(\d|x)', r')*\1', expr)
+
     mappings = [
         (r'\bcos\b', 'np.cos'), (r'\bsin\b', 'np.sin'), (r'\btan\b', 'np.tan'),
         (r'\bsqrt\b', 'np.sqrt'), (r'\bexp\b', 'np.exp'), (r'\blog\b', 'np.log'),
@@ -418,6 +423,14 @@ if st.session_state.initialized:
             st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': True})
 
         with tab_data:
+            st.info(
+                """
+                ℹ️ **Note on Precision:** Calculations are performed using full floating-point precision (15+ digits). 
+                The values below are **rounded** for readability. If you calculate the error manually using these rounded numbers, 
+                your result may differ slightly from the computer's exact result.
+                """
+            )
+
             def highlight_success(row):
                 try:
                     e = float(row['Error (%)'])
@@ -430,10 +443,12 @@ if st.session_state.initialized:
             fmt_dict = {
                 "Previous X": f"{{:.{decimals}f}}",
                 "Current X": f"{{:.{decimals}f}}",
-                "Error (%)": "{:.8f}"
+                "Error (%)": f"{{:.{decimals}f}}" 
             }
             
-            styled_df = st.session_state.history_df.style.apply(highlight_success, axis=1).format(fmt_dict)
+            styled_df = st.session_state.history_df.style\
+                .apply(highlight_success, axis=1)\
+                .format(fmt_dict)
             
             st.dataframe(
                 styled_df, 
