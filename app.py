@@ -3,23 +3,18 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import re
-import math
-
-
-
 
 class IterationEngine:
     def __init__(self):
-        self.expression = ""
-        self.history = [] 
-        self.previous_x = 0.0
         self.g_str = ""
+        self.history = []        
+        self.previous_x = 0.0
+        self.total_steps = 0     
 
-    def initialize(self, func_str, x0, use_degrees=False):
+    def initialize(self, func_str, x0):
         self.g_str = func_str
         self.history = []
         self.total_steps = 0 
-        self.use_degrees = use_degrees
         try:
             self.previous_x = float(x0)
             val = self.evaluate_g(self.previous_x)
@@ -71,18 +66,18 @@ class IterationEngine:
             else:
                 error_pct = abs((x_out - x_in) / x_out) * 100
             
-            if len(self.history) > 1000:
+            if len(self.history) > 500:
                 self.history.pop(0)
-            
             self.history.append((x_in, x_out))
-            self.previous_x = x_out
             
+            self.previous_x = x_out
+            self.total_steps += 1 
+
             if abs(x_out) < 1e-15 and abs(x_in) < 1e-15:
                 error_pct = 0.0
             
             return {
-                "step": len(self.history),
-                "total_steps": self.total_steps + 1,
+                "step": self.total_steps, 
                 "x_in": x_in,
                 "x_out": x_out,
                 "error": error_pct
@@ -92,41 +87,27 @@ class IterationEngine:
 
     def run_auto(self, tolerance, max_iter):
         results = []
-        
-        batch_limit = 1000 
-        
-        for i in range(max_iter):
+        for _ in range(max_iter):
             res = self.step()
-            self.total_steps += 1
-            
             if "error_msg" in res:
                 results.append(res)
                 break
-            
-            if len(results) >= batch_limit:
-                results.pop(0)
             results.append(res)
             
             is_converged = res["error"] < tolerance
             is_zero = abs(res["x_out"]) < 1e-15
             
-            if (is_converged or is_zero) and i > 0:
-                break
-                
+            if (is_converged or is_zero) and res["step"] > 1:
+                break    
         return results
 
     def g_func(self, val):
         return self.evaluate_g(val)
 
 
-
-
-
-
 def process_math_input(user_input):
     if not user_input: return ""
     expr = user_input.strip().replace("^", "**")
-    
     expr = re.sub(r'(\d)\s*(x)', r'\1*\2', expr)
     expr = re.sub(r'(\d)\s*\(', r'\1*(', expr)
     expr = re.sub(r'\)\s*(\d|x)', r')*\1', expr)
@@ -155,17 +136,13 @@ def validate_inputs(func, x0, tol):
     try: float(x0)
     except: return False, "Initial Guess must be a valid number."
     try: 
-        if float(tol) <= 0: return False, "Tolerance must be positive."
+        if float(tol) < 0: return False, "Tolerance must be positive."
+        if float(tol) == 0: return False, "Tolerance must greater than 0 (e.g. 0.00001)."
     except: return False, "Tolerance must be a valid number."
     return True, ""
 
 
-
-
-
 st.set_page_config(page_title="Convergence Engine", page_icon="🕸️", layout="wide")
-
-
 
 st.markdown("""
     <style>
@@ -316,38 +293,42 @@ with st.sidebar:
     if st.session_state.initialized:
         tol_val = float(tol_input) if tol_input else 1e-4
         
+        new_data = []
+        
         if step_clicked:
             res = st.session_state.engine.step()
             if "error_msg" in res:
                 st.session_state.runtime_error = get_friendly_error_message(res["error_msg"])
             else:
                 st.session_state.runtime_error = None
-                new_row = {"Iteration": int(res["step"]), "Previous X": res["x_in"], "Current X": res["x_out"], "Error (%)": res["error"]}
-                st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame([new_row])], ignore_index=True)
+                new_data.append(res)
 
         if auto_clicked:
             with st.spinner(f"Crunching {max_iter_input} iterations..."):
                 results = st.session_state.engine.run_auto(tol_val, int(max_iter_input))
-            
-            new_rows = []
             st.session_state.runtime_error = None
-            
             for res in results:
                 if "error_msg" in res:
                     st.session_state.runtime_error = get_friendly_error_message(res["error_msg"])
                     break
-                iter_num = res.get("total_steps", res["step"])
-                new_rows.append({
-                    "Iteration": int(iter_num), 
-                    "Previous X": res["x_in"], 
-                    "Current X": res["x_out"], 
-                    "Error (%)": res["error"]
+                new_data.append(res)
+        
+        if new_data:
+            rows = []
+            for r in new_data:
+                rows.append({
+                    "Iteration": int(r["step"]),
+                    "Previous X": r["x_in"],
+                    "Current X": r["x_out"],
+                    "Error (%)": r["error"]
                 })
             
-            st.session_state.history_df = pd.DataFrame(new_rows)
+            st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame(rows)], ignore_index=True)
+            
+            if len(st.session_state.history_df) > 100000:
+                 st.session_state.history_df = st.session_state.history_df.iloc[-100000:]
 
 st.title("🕸️ The Convergence Engine")
-
 
 if st.session_state.initialized:
     if st.session_state.runtime_error:
@@ -362,51 +343,73 @@ if st.session_state.initialized:
         try: tol_val = float(tol_input)
         except: tol_val = 1e-4
         max_iter = int(max_iter_input)
-        
 
         if curr_err < tol_val and curr_iter > 0:
             st.markdown(f'<div class="success-box">✅ Solution Converged<br><span style="font-size:0.9rem; opacity:0.8">Target reached at x = {curr_x:.{decimals}f}</span></div>', unsafe_allow_html=True)
-        elif curr_iter >= max_iter:
-            st.warning(f"⚠️ Max iterations ({max_iter}) reached without convergence.")
-
+        elif curr_iter >= max_iter and auto_clicked: 
+            st.warning(f"⚠️ Iterations ({curr_iter}) reached without convergence.")
 
         k1, k2, k3 = st.columns(3)
         k1.markdown(f'<div class="stat-box"><div class="stat-label">Iteration</div><div class="stat-value">#{curr_iter}</div></div>', unsafe_allow_html=True)
         k2.markdown(f'<div class="stat-box"><div class="stat-label">Current X</div><div class="stat-value">{curr_x:.{decimals}f}</div></div>', unsafe_allow_html=True)
         
+        if curr_iter == 0:
+            err_display = "-" 
+            err_style = "color: var(--text-color); opacity: 0.5;"
+        else:
+            err_display = f"{curr_err:.{decimals}f}%"
+            err_style = "color: #EF553B;" if curr_err > tol_val else "color: #00CC96;"
 
-        err_style = "color: #EF553B;" if curr_err > tol_val else "color: #00CC96;"
-        k3.markdown(f'<div class="stat-box"><div class="stat-label">Relative Error</div><div class="stat-value" style="{err_style}">{curr_err:.{decimals}f}%</div></div>', unsafe_allow_html=True)
+        k3.markdown(f'<div class="stat-box"><div class="stat-label">Relative Error</div><div class="stat-value" style="{err_style}">{err_display}</div></div>', unsafe_allow_html=True)
 
         tab_plot, tab_data = st.tabs(["🕸️ Interactive Plot", "📋 Data Table"])
 
         with tab_plot:
-            history = st.session_state.engine.history
+            plot_history = st.session_state.engine.history
             
             try: x_start = float(x0_input)
             except: x_start = 0.0
 
             try:
                 x_next_pred = st.session_state.engine.g_func(x_start)
-                if np.isnan(x_next_pred) or abs(x_next_pred) > 1e10: 
-                    x_next_pred = x_start 
-            except:
-                x_next_pred = x_start
-
-            static_points = [x_start, x_next_pred]
-            sp_min, sp_max = min(static_points), max(static_points)
+                if np.isnan(x_next_pred) or abs(x_next_pred) > 1e10: x_next_pred = x_start 
+            except: x_next_pred = x_start
+            
+            static_pts = [x_start, x_next_pred]
+            sp_min, sp_max = min(static_pts), max(static_pts)
             sp_span = sp_max - sp_min
-            
-            if sp_span == 0: 
-                sp_span = abs(sp_min) * 0.5 if sp_min != 0 else 2.0
-            
+            if sp_span == 0: sp_span = abs(sp_min) * 0.5 if sp_min != 0 else 2.0
             sp_buff = sp_span * 0.5
             static_range = [sp_min - sp_buff, sp_max + sp_buff]
 
-            bg_limit = max(abs(sp_max), abs(sp_min), sp_span) * 50
-            if bg_limit == 0: bg_limit = 100 
+            smart_pts = []
+            if plot_history:
+                recent = plot_history[-20:] 
+                for p in recent: smart_pts.extend([p[0], p[1]])
+            else:
+                smart_pts = static_pts
 
-            x_bg = np.linspace(-bg_limit, bg_limit, 5000) 
+            smart_pts = [p for p in smart_pts if abs(p) < 1e10]  
+            if not smart_pts: smart_pts = [x_start]
+            
+            fp_min, fp_max = min(smart_pts), max(smart_pts)
+            fp_span = fp_max - fp_min
+            if fp_span == 0: fp_span = abs(fp_min)*0.4 if fp_min!=0 else 1.0
+            fp_buff = fp_span * 0.25
+            smart_range = [fp_min - fp_buff, fp_max + fp_buff]
+
+            if auto_focus:
+                final_x = smart_range
+                final_y = smart_range
+                ui_rev = f"step_{curr_iter}"
+            else:
+                final_x = static_range
+                final_y = static_range
+                ui_rev = "constant_view" 
+
+            bg_limit = max(abs(sp_max), abs(sp_min), sp_span) * 50
+            if bg_limit == 0: bg_limit = 100
+            x_bg = np.linspace(-bg_limit, bg_limit, 2000) 
             y_bg = []
             for v in x_bg:
                 try:
@@ -416,18 +419,16 @@ if st.session_state.initialized:
                 except: y_bg.append(None)
 
             fig = go.Figure()
-
             fig.add_trace(go.Scatter(x=[-bg_limit, bg_limit], y=[-bg_limit, bg_limit], mode='lines', name='y=x', 
                                      line=dict(color='#7F8C8D', dash='dash', width=2), hoverinfo='skip'))
-            
             fig.add_trace(go.Scatter(x=x_bg, y=y_bg, mode='lines', name='g(x)', 
                                      line=dict(color='#00B4D8', width=3)))
 
-            if show_cobweb and history:
+            if show_cobweb and plot_history:
                 cx, cy = [], []
-                sx = history[0][0]
+                sx = plot_history[0][0]
                 cx.append(sx); cy.append(sx)
-                for px, nx in history:
+                for px, nx in plot_history:
                     cx.extend([px, px, nx, nx])
                     cy.extend([px, nx, nx, nx])
                 fig.add_trace(go.Scatter(x=cx, y=cy, mode='lines+markers', name='Path', 
@@ -438,35 +439,10 @@ if st.session_state.initialized:
                                      marker=dict(size=14, color='#F72585', symbol='diamond', 
                                                  line=dict(color='white', width=2))))
 
-            follow_points = []
-            if history:
-                recent = history[-5:] 
-                follow_points += [p[0] for p in recent] + [p[1] for p in recent]
-            follow_points.append(curr_x)
-            if not history: follow_points.append(x_start)
-            
-            follow_points = [p for p in follow_points if -1e10 < p < 1e10]
-            if not follow_points: follow_points = [x_start]
-            
-            fp_min, fp_max = min(follow_points), max(follow_points)
-            fp_span = fp_max - fp_min
-            if fp_span == 0: fp_span = abs(fp_min)*0.4 if fp_min!=0 else 1.0
-            fp_buff = fp_span * 0.25
-            smart_range = [fp_min - fp_buff, fp_max + fp_buff]
-
-            if auto_focus:
-                final_x = smart_range
-                final_y = smart_range
-                ui_rev = f"step_{curr_iter}" 
-            else:
-                final_x = static_range
-                final_y = static_range
-                ui_rev = "constant_view"
-
             fig.update_layout(
                 height=500, 
                 dragmode='pan',
-                uirevision=ui_rev,
+                uirevision=ui_rev, 
                 paper_bgcolor='rgba(0,0,0,0)', 
                 plot_bgcolor='rgba(0,0,0,0)',
                 xaxis=dict(
@@ -498,11 +474,16 @@ if st.session_state.initialized:
             st.info(
                 """
                 ℹ️ **Note on Precision:** Calculations are performed using full floating-point precision (15+ digits). 
-                The values below are **rounded** for readability. If you calculate the error manually using these rounded numbers, 
-                your result may differ slightly from the computer's exact result.
+                The values below are **rounded** for readability.
                 """
             )
 
+            fmt_dict = {
+                "Previous X": f"{{:.{decimals}f}}",
+                "Current X": f"{{:.{decimals}f}}",
+                "Error (%)": f"{{:.{decimals}f}}" 
+            }
+            
             def highlight_success(row):
                 try:
                     e = float(row['Error (%)'])
@@ -512,21 +493,11 @@ if st.session_state.initialized:
                 except: pass
                 return [''] * len(row)
 
-            fmt_dict = {
-                "Previous X": f"{{:.{decimals}f}}",
-                "Current X": f"{{:.{decimals}f}}",
-                "Error (%)": f"{{:.{decimals}f}}" 
-            }
-            
             styled_df = st.session_state.history_df.style\
                 .apply(highlight_success, axis=1)\
                 .format(fmt_dict)
             
-            st.dataframe(
-                styled_df, 
-                use_container_width=True, 
-                hide_index=True
-            )
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 else:
     st.markdown("### 👋 Welcome! Ready to converge?")
