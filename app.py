@@ -15,9 +15,11 @@ class IterationEngine:
         self.previous_x = 0.0
         self.g_str = ""
 
-    def initialize(self, func_str, x0):
+    def initialize(self, func_str, x0, use_degrees=False):
         self.g_str = func_str
         self.history = []
+        self.total_steps = 0 
+        self.use_degrees = use_degrees
         try:
             self.previous_x = float(x0)
             val = self.evaluate_g(self.previous_x)
@@ -47,11 +49,20 @@ class IterationEngine:
     def step(self):
         try:
             x_in = self.previous_x
-            if abs(x_in) > 1e10:
+            
+            if abs(x_in) > 1e100: 
                 return {"error_msg": "OverflowError: Values are too large (Divergence)"}
 
-            x_out = self.evaluate_g(x_in)
+            try:
+                x_out = self.evaluate_g(x_in)
+            except OverflowError:
+                return {"error_msg": "OverflowError: Calculation exceeded limits."}
+            except Exception as e:
+                return {"error_msg": f"Calculation Error: {str(e)}"}
             
+            if np.isinf(x_out) or abs(x_out) > 1e100:
+                 return {"error_msg": "OverflowError: Result exploded to Infinity."}
+
             if np.isnan(x_out) or np.iscomplex(x_out):
                 return {"error_msg": "DomainError: Result is not a real number."}
 
@@ -60,11 +71,18 @@ class IterationEngine:
             else:
                 error_pct = abs((x_out - x_in) / x_out) * 100
             
+            if len(self.history) > 1000:
+                self.history.pop(0)
+            
             self.history.append((x_in, x_out))
             self.previous_x = x_out
             
+            if abs(x_out) < 1e-15 and abs(x_in) < 1e-15:
+                error_pct = 0.0
+            
             return {
                 "step": len(self.history),
+                "total_steps": self.total_steps + 1,
                 "x_in": x_in,
                 "x_out": x_out,
                 "error": error_pct
@@ -74,14 +92,27 @@ class IterationEngine:
 
     def run_auto(self, tolerance, max_iter):
         results = []
-        for _ in range(max_iter):
+        
+        batch_limit = 1000 
+        
+        for i in range(max_iter):
             res = self.step()
+            self.total_steps += 1
+            
             if "error_msg" in res:
                 results.append(res)
                 break
+            
+            if len(results) >= batch_limit:
+                results.pop(0)
             results.append(res)
-            if res["error"] < tolerance and res["step"] > 0:
+            
+            is_converged = res["error"] < tolerance
+            is_zero = abs(res["x_out"]) < 1e-15
+            
+            if (is_converged or is_zero) and i > 0:
                 break
+                
         return results
 
     def g_func(self, val):
@@ -244,7 +275,7 @@ with st.sidebar:
         """)
 
     with st.expander("🛠️ Limits"):
-        max_iter_input = st.number_input("Max Iterations:", value=100, step=10)
+        max_iter_input = st.number_input("Max Iterations:", value=100, min_value=1, max_value=100000, step=10)
         decimals = st.slider("Decimals:", 0, 15, 6)
 
     col_btn1, col_btn2 = st.columns(2)
@@ -295,17 +326,25 @@ with st.sidebar:
                 st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame([new_row])], ignore_index=True)
 
         if auto_clicked:
-            results = st.session_state.engine.run_auto(tol_val, int(max_iter_input))
+            with st.spinner(f"Crunching {max_iter_input} iterations..."):
+                results = st.session_state.engine.run_auto(tol_val, int(max_iter_input))
+            
             new_rows = []
             st.session_state.runtime_error = None
+            
             for res in results:
                 if "error_msg" in res:
                     st.session_state.runtime_error = get_friendly_error_message(res["error_msg"])
                     break
-                new_rows.append({"Iteration": int(res["step"]), "Previous X": res["x_in"], "Current X": res["x_out"], "Error (%)": res["error"]})
+                iter_num = res.get("total_steps", res["step"])
+                new_rows.append({
+                    "Iteration": int(iter_num), 
+                    "Previous X": res["x_in"], 
+                    "Current X": res["x_out"], 
+                    "Error (%)": res["error"]
+                })
             
-            if new_rows:
-                st.session_state.history_df = pd.concat([st.session_state.history_df, pd.DataFrame(new_rows)], ignore_index=True)
+            st.session_state.history_df = pd.DataFrame(new_rows)
 
 st.title("🕸️ The Convergence Engine")
 
